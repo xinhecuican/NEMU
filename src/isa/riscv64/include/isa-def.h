@@ -108,7 +108,16 @@ typedef struct {
   uint64_t vxsat, vxrm, vcsr;
   uint64_t vl, vtype, vlenb;
 #endif // CONFIG_RVV
+#ifndef CONFIG_FPU_NONE
+  uint64_t fcsr;
+#endif // CONFIG_FPU_NONE
 
+#ifdef CONFIG_RV_SDTRIG
+  uint64_t tselect;
+  uint64_t tdata1;
+  uint64_t tinfo;
+  uint64_t tcontrol;
+#endif // CONFIG_RV_SDTRIG
 
 
   // exec state
@@ -132,15 +141,15 @@ typedef struct {
   struct DebugInfo debug;
 #ifdef CONFIG_QUERY_REF
   struct MemEventQueryResult query_mem_event;
-#endif
+#endif // CONFIG_QUERY_REF
 
-#ifdef CONFIG_RVSDEXT
+#ifdef CONFIG_RV_SDEXT
   bool debug_mode;
-#endif
+#endif // CONFIG_RV_SDEXT
 
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
   TriggerModule *TM;
-#endif
+#endif // CONFIG_RV_SDTRIG
 } riscv64_CPU_state;
 
 // decode
@@ -276,9 +285,11 @@ typedef struct {
 enum { MODE_U = 0, MODE_S, MODE_HS, MODE_M };
 
 int get_data_mmu_state();
-#define isa_mmu_state() get_data_mmu_state()
 #ifdef CONFIG_RVH
 int get_h_mmu_state();
-#endif
+#define isa_mmu_state() (cpu.v ? get_h_mmu_state() : get_data_mmu_state())
+#else
+#define isa_mmu_state() get_data_mmu_state()
+#endif //CONFIG_RVH
 
 #endif

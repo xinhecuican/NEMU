@@ -25,6 +25,7 @@
 #include "../local-include/rtl.h"
 #include <setjmp.h>
 #include "vcommon.h"
+#include "vcompute_impl.h"
 
 int get_mode(Decode *s) {
   /*
@@ -48,28 +49,22 @@ void set_vtype_vl(Decode *s, int mode) {
   
   if(vl_num == (uint64_t)-1 || check_vlmul_sew_illegal(id_src2->val)) {
     vtype->val = error;
+    // if vtype illegal, set vl = 0, vd = 0
+    vl->val = 0;
   }
   else {
     vtype->val = id_src2->val;
+    vl->val = vl_num;
   }
-  // if vtype illegal,set vl = 0 ,vd = 0
-  if(check_vlmul_sew_illegal(id_src2->val)){
-    vl->val = 0;
 
-    rtl_sr(s, id_dest->reg, &vl->val, 8/*4*/);
-    return;
-  }
-  vl->val = vl_num;
-
-  rtl_sr(s, id_dest->reg, &vl_num, 8/*4*/);
+  rtl_sr(s, id_dest->reg, &vl->val, 8);
 
   vstart->val = 0;
 }
 
 def_EHelper(vsetvl) {
 
-  //vlmul+lg2(VLEN) <= vsew + vl
-  // previous decode does not load vals for us
+  require_vector(false);
   rtl_lr(s, &(s->src1.val), s->src1.reg, 4);
   rtl_lr(s, &(s->src2.val), s->src2.reg, 4);
   int mode = get_mode(s);
@@ -79,8 +74,7 @@ def_EHelper(vsetvl) {
 
 def_EHelper(vsetvli) {
 
-  //vlmul+lg2(VLEN) <= vsew + vl
-  // previous decode does not load vals for us
+  require_vector(false);
   rtl_lr(s, &(s->src1.val), s->src1.reg, 4);
   rtl_li(s, &(s->src2.val), s->isa.instr.v_opsimm.v_zimm);
   int mode = get_mode(s);
@@ -89,8 +83,8 @@ def_EHelper(vsetvli) {
 }
 
 def_EHelper(vsetivli) {
-  //vlmul+lg2(VLEN) <= vsew + vl
-  // previous decode does not load vals for us
+
+  require_vector(false);
   rtl_li(s, &(s->src1.val), s->isa.instr.v_vseti.v_zimm5);
   rtl_li(s, &(s->src2.val), s->isa.instr.v_vseti.v_zimm);
   set_vtype_vl(s, 0);

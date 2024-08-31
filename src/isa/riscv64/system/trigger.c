@@ -4,7 +4,7 @@
 #include "../local-include/csr.h"
 #include "../local-include/intr.h"
 
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
 
 void tm_update_timings(struct TriggerModule* TM) {
   TM->check_timings.val = 0;
@@ -27,7 +27,7 @@ trig_action_t tm_check_hit(
   vaddr_t addr,
   word_t data
 ) {
-#ifdef CONFIG_RVSDEXT
+#ifdef CONFIG_RV_SDEXT
   // do nothing in debug mode
   if (cpu.debug_mode)
     return TRIG_ACTION_NONE;
@@ -37,20 +37,22 @@ trig_action_t tm_check_hit(
   const int trigger_num = CONFIG_TRIGGER_NUM;
   bool chain_ok[trigger_num];
   bool timing_ok[trigger_num];
+  bool hit[trigger_num];
   bool can_fire[trigger_num];
   memset(chain_ok, true, sizeof(chain_ok));
   memset(timing_ok, true, sizeof(chain_ok));
 
   for (int i = 0; i < trigger_num; i++) {
-    if (TM->triggers[i].tdata1.common.type != TRIG_TYPE_MCONTROL)
-      continue;
-    bool match = trigger_match(&TM->triggers[i], op, addr, data);
-    TM->triggers[i].tdata1.mcontrol.hit = match;
+    bool match = false;
+    if (TM->triggers[i].tdata1.common.type == TRIG_TYPE_MCONTROL){
+      match = trigger_match(&TM->triggers[i], op, addr, data);
+    }
+    hit[i] = match;
   }
 
   bool last_timing =  TM->triggers[0].tdata1.mcontrol.timing;
   for (int i = 1; i < trigger_num; i++) {
-    bool last_hit = TM->triggers[i - 1].tdata1.mcontrol.hit;
+    bool last_hit = hit[i-1];
     bool last_chain = TM->triggers[i - 1].tdata1.mcontrol.chain;
     bool this_timing = TM->triggers[i].tdata1.mcontrol.timing;
     chain_ok[i] = last_hit || (!last_hit && !last_chain);
@@ -60,7 +62,7 @@ trig_action_t tm_check_hit(
 
   for (int i = 0; i < trigger_num; i++) {
     bool this_chain = TM->triggers[i].tdata1.mcontrol.chain;
-    bool this_hit = TM->triggers[i].tdata1.mcontrol.hit;
+    bool this_hit = hit[i];
     can_fire[i] = chain_ok[i] && timing_ok[i] && this_hit && !this_chain;
     if (can_fire[i])
       return TM->triggers[i].tdata1.mcontrol.action;
@@ -75,7 +77,7 @@ bool trigger_match(Trigger* trig, trig_op_t op, vaddr_t addr, word_t data) {
       ((op & TRIG_OP_LOAD)    && !trig->tdata1.mcontrol.load) ||
       ((op & TRIG_OP_STORE)   && !trig->tdata1.mcontrol.store) ||
       ((op & TRIG_OP_TIMING)  && !trig->tdata1.mcontrol.timing) ||
-      (cpu.mode == MODE_M     && !trig->tdata1.mcontrol.m) ||
+      (cpu.mode == MODE_M     && !(trig->tdata1.mcontrol.m && tcontrol->mte)) ||
       (cpu.mode == MODE_S     && !trig->tdata1.mcontrol.s) ||
       (cpu.mode == MODE_U     && !trig->tdata1.mcontrol.u)) {
     return false;
@@ -170,4 +172,4 @@ void trigger_handler(const trig_action_t action) {
   }
 }
 
-#endif //CONFIG_RVSDTRIG
+#endif //CONFIG_RV_SDTRIG

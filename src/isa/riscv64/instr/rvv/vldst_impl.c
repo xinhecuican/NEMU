@@ -13,16 +13,39 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
+#include "cpu/decode.h"
+#include "debug.h"
+#include "macro.h"
+#include "memory/paddr.h"
+#include "rtl/rtl.h"
 #include <common.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/cdefs.h>
 #ifdef CONFIG_RVV
 
 #include <cpu/cpu.h>
+#include <cpu/difftest.h>
 #include "vldst_impl.h"
+#include "vcompute_impl.h"
 #include "../local-include/intr.h"
 
+uint64_t fofvl = 0;
+uint64_t mtvaltmp = 0;
+
+void set_fofNoExceptionState(int* cause){
+  if (fofvl != 0){
+    *cause = 0;
+    vl->val = fofvl;
+    INTR_TVAL_REG(EX_LAF) = mtvaltmp;
+    difftest_skip_dut(1,0);
+  }
+}
+
+void isa_vec_misalign_data_addr_check(vaddr_t vaddr, int len, int type);
 // reference: v_ext_macros.h in riscv-isa-sim
 
-void isa_emul_check(int emul, int nfields) {
+static void isa_emul_check(int emul, int nfields) {
   if (emul > 3) {
     Log("vector EMUL > 8 happen: EMUL:%d\n", (1 << emul));
     longjmp_exception(EX_II);
@@ -42,11 +65,164 @@ void isa_emul_check(int emul, int nfields) {
   }
 }
 
-void vld(int mode, int is_signed, Decode *s, int mmu_mode) {
+static void vstore_check(int mode, Decode *s) {
+  int eew = 0;
+  switch(s->v_width) {
+    case 1: eew = 0; break;
+    case 2: eew = 1; break;
+    case 4: eew = 2; break;
+    case 8: eew = 3; break;
+    default: Loge("illegal v_width: %d\n", s->v_width);
+    longjmp_exception(EX_II); break;
+  }
+  uint64_t veew = mode == MODE_MASK ? 1 : 8 << eew;
+  uint64_t vsew = 8 << vtype->vsew;
+  double vflmul = compute_vflmul();
+  float vemul = mode == MODE_MASK ? 1 : ((float)veew / vsew * vflmul);
+  uint64_t emul = vemul < 1 ? 1 : vemul;
+  if (!(vemul >= 0.125 && vemul <= 8)) {
+    Loge("illegal EMUL: %f\n", vemul);
+    longjmp_exception(EX_II);
+  }
+  require_aligned(id_dest->reg, vemul);
+  uint64_t nf = s->v_nf + 1;
+  if (!((nf * emul <= 8) && (id_dest->reg + nf * emul <= 32))) {
+    Loge("illegal NFIELDS: %lu EMUL: %lu\n", nf, emul);
+    longjmp_exception(EX_II);
+  }
+}
+
+static void vload_check(int mode, Decode *s) {
+  vstore_check(mode, s);
+  require_vm(s);
+}
+
+static void index_vstore_check(Decode *s) {
+  int eew = vtype->vsew;
+  int elt_width = 0;
+  switch(s->v_width) {
+    case 1: elt_width = 0; break;
+    case 2: elt_width = 1; break;
+    case 4: elt_width = 2; break;
+    case 8: elt_width = 3; break;
+    default: break;
+  }
+  double vflmul = compute_vflmul();
+  float vemul = (float)(8 << elt_width) / (8 << eew) * vflmul;
+    if (!(vemul >= 0.125 && vemul <= 8)) {
+    Loge("illegal EMUL: %f\n", vemul);
+    longjmp_exception(EX_II);
+  }
+
+  uint64_t flmul = vflmul < 1 ? 1 : vflmul;
+
+  require_aligned(id_dest->reg, vflmul);
+  require_aligned(id_src2->reg, vemul);
+
+  uint64_t nf = s->v_nf + 1;
+  if (!((nf * flmul <= 8) && (id_dest->reg + nf * flmul <= 32))) {
+    Loge("illegal NFIELDS: %lu LMUL: %lu\n", nf, flmul);
+    longjmp_exception(EX_II);
+  }
+}
+
+static void index_vload_check(Decode *s) {
+  index_vstore_check(s);
+  int eew = vtype->vsew;
+  int elt_width = 0;
+  switch(s->v_width) {
+    case 1: elt_width = 0; break;
+    case 2: elt_width = 1; break;
+    case 4: elt_width = 2; break;
+    case 8: elt_width = 3; break;
+    default: break;
+  }
+  uint64_t nf = s->v_nf + 1;
+  double vflmul = compute_vflmul();
+  float vemul = (float)(8 << elt_width) / (8 << eew) * vflmul;
+  uint64_t flmul = vflmul < 1 ? 1 : vflmul;
+  for (uint64_t idx = 0; idx < nf; idx++) {
+    uint64_t seg_vd = id_dest->reg + idx * flmul;
+    if (elt_width > eew) {
+      if (seg_vd != id_src2->reg) {
+        require_noover(seg_vd, vflmul, id_src2->reg, vemul);
+      }
+    } else if (elt_width < eew) {
+      if (vemul < 1) {
+        require_noover(seg_vd, vflmul, id_src2->reg, vemul);
+      } else {
+        require_noover_widen(seg_vd, vflmul, id_src2->reg, vemul);
+      }
+    }
+    if (nf >= 2) {
+      require_noover(seg_vd, vflmul, id_src2->reg, vemul);
+    }
+  }
+  require_vm(s);
+}
+
+#ifndef CONFIG_SHARE
+static inline unsigned gen_mask_for_unit_stride(Decode *s, int eew, vstart_t *vstart, uint64_t vl_val,
+    uint8_t * restrict masks) {
+  unsigned count = 0;
+  switch (eew) {
+  case 0: {
+    for (int i = vstart->val; i < vl_val; i++) {
+      masks[i] = get_mask(0, i) ? 0xff : 0;
+      Logm("masks[%d] = %x", i, masks[i]);
+      masks[i] |= s->vm != 0 ? 0xff : 0;
+      count += masks[i] != 0;
+    };
+    break;
+  }
+  case 1: {
+    uint16_t *x_masks = (uint16_t *)masks;
+    for (int i = vstart->val; i < vl_val; i++) {
+      Assert(vl_val <= 64, "vl_val > 64");
+      x_masks[i] = get_mask(0, i) ? 0xffff : 0;
+      Logm("xmasks[%d] = %x", i, x_masks[i]);
+      x_masks[i] |= s->vm != 0 ? 0xffff : 0;
+      count += x_masks[i] != 0;
+    };
+    break;
+  }
+  case 2: {
+    uint32_t *x_masks = (uint32_t *)masks;
+    for (int i = vstart->val; i < vl_val; i++) {
+      Assert(vl_val <= 32, "vl_val > 32");
+      x_masks[i] = get_mask(0, i) ? ~0U : 0;
+      Logm("xmasks[%d] = %x", i, x_masks[i]);
+      x_masks[i] |= s->vm != 0 ? ~0U : 0;
+      count += x_masks[i] != 0;
+    };
+    break;
+  }
+  case 3: {
+    uint64_t *x_masks = (uint64_t *)masks;
+    for (int i = vstart->val; i < vl_val; i++) {
+      Assert(vl_val <= 16, "vl_val > 16");
+      x_masks[i] = get_mask(0, i) ? ~(0UL) : 0;
+      Logm("xmasks[%d] = %lx", i, x_masks[i]);
+      x_masks[i] |= s->vm != 0 ? ~(0UL) : 0;
+      count += x_masks[i] != 0;
+    }
+    break;
+  }
+  default:
+    Assert(0, "eew >= 4 is reserved");
+  }
+  return count;
+}
+
+#endif // CONFIG_SHARE
+
+void vld(Decode *s, int mode, int mmu_mode) {
+  vload_check(mode, s);
   if(check_vstart_ignore(s)) return;
-  word_t idx;
-  uint64_t nf, fn, vl_val, base_addr, vd, addr;
-  int eew, emul, emul_coding, stride, is_stride;
+  uint64_t idx;
+  uint64_t nf, fn, vl_val, base_addr, vd, addr, is_unit_stride;
+  int64_t stride;
+  int eew, emul, vemul;
 
   // s->v_width is the bytes of a unit
   // eew is the coding like vsew
@@ -58,17 +234,18 @@ void vld(int mode, int is_signed, Decode *s, int mmu_mode) {
     case 8: eew = 3; break;
     default: break;
   }
-  emul_coding = vtype->vlmul > 4 ? vtype->vlmul - 8 + eew - vtype->vsew : vtype->vlmul + eew - vtype->vsew;
-  isa_emul_check(mode == MODE_MASK ? 1 : emul_coding, 1);
-  emul_coding = emul_coding < 0 ? 0 : emul_coding;
-  emul = 1 << emul_coding;
+  emul = vtype->vlmul > 4 ? vtype->vlmul - 8 + eew - vtype->vsew : vtype->vlmul + eew - vtype->vsew;
+  isa_emul_check(mode == MODE_MASK ? 1 : emul, 1);
+  emul = emul < 0 ? 0 : emul;
+  vemul = emul;
+  emul = 1 << emul;
 
   if (mode == MODE_STRIDED) {
     stride = id_src2->val;
-    is_stride = 0;
+    is_unit_stride = 0;
   } else {
     stride = 0;
-    is_stride = 1;
+    is_unit_stride = 1;
   }
   // previous decode does not load vals for us
   rtl_lr(s, &(s->src1.val), s->src1.reg, 4);
@@ -78,30 +255,120 @@ void vld(int mode, int is_signed, Decode *s, int mmu_mode) {
   vl_val = mode == MODE_MASK ? (vl->val + 7) / 8 : vl->val;
   base_addr = tmp_reg[0];
   vd = id_dest->reg;
-  for (idx = vstart->val; idx < vl_val; idx++, vstart->val++) {
-    rtlreg_t mask = get_mask(0, idx, vtype->vsew, vtype->vlmul);
-    if (s->vm == 0 && mask == 0) {
-      if (RVV_AGNOSTIC && vtype->vma) {
-        tmp_reg[1] = (uint64_t) -1;
-        for (fn = 0; fn < nf; fn++) {
-          set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, emul_coding, mode == MODE_MASK ? 0 : 1);
-        }
+
+  bool fast_vle = false;
+
+#ifndef CONFIG_SHARE
+  uint64_t start_addr = base_addr + (vstart->val * nf) * s->v_width;
+  uint64_t last_addr = base_addr + (vl_val * nf - 1) * s->v_width;
+  uint64_t vle_size = last_addr - start_addr + s->v_width;
+  __attribute_maybe_unused__ bool cross_page = last_addr / PAGE_SIZE != start_addr / PAGE_SIZE;
+  uint8_t masks[VLMAX_8] = {0};
+
+  Logm("vld start_addr: %#lx, v_width: %u, vl_val: %lu, vle size=%lu, vstart->val: %lu, nf=%lu",
+      base_addr, s->v_width, vl_val, vle_size, vstart->val, nf);
+
+  if (is_unit_stride && nf == 1 && vl_val > vstart->val && vtype->vlmul < 4 && !cross_page) {
+    s->last_access_host_addr = NULL;
+    extern void dummy_vaddr_data_read(struct Decode *s, vaddr_t addr, int len, int mmu_mode);
+    dummy_vaddr_data_read(s, start_addr, s->v_width, mmu_mode);
+    // Now we have the host address of first element in Decode *s->last_access_host_addr
+    if (s->last_access_host_addr != NULL) {
+
+      // get address of first element in register file
+      void *reg_file_addr = NULL;
+      get_vreg_with_addr(vd, vstart->val, &tmp_reg[1], eew, 0, 0, 0, &reg_file_addr);
+      Assert(reg_file_addr != NULL, "reg_file_addr is NULL");
+      uint8_t * restrict reg_file_addr_8 = reg_file_addr;
+
+      __attribute_maybe_unused__ unsigned count = gen_mask_for_unit_stride(s, eew, vstart, vl_val, masks);
+
+      uint8_t invert_masks[VLMAX_8] = {0};
+      uint8_t * restrict last_access_host_addr_u8 = s->last_access_host_addr;
+      
+#ifdef DEBUG_FAST_VLE
+      switch (s->v_width) {
+        case 1: for (int i = 0; i < vle_size; i++) {
+            Logm("Element %i, mask = %x, inv mask = %x, reg = %x, mem = %x", i,
+                 masks[i], invert_masks[i], reg_file_addr_8[i],
+                 last_access_host_addr[i]);
+          }
+          break;
+        case 2:
+          for (int i = 0; i < vle_size; i += 2) {
+            Logm("Element %i, mask = %x, inv mask = %x, reg = %x, mem = %x", i,
+                 *(uint16_t *)&masks[i], *(uint16_t *)&invert_masks[i],
+                 *(uint16_t *)&reg_file_addr_8[i],
+                 *(uint16_t *)&last_access_host_addr[i]);
+          }
+          break;
+        case 4:
+          for (int i = 0; i < vle_size; i += 4) {
+            Logm("Element %i, mask = %x, inv mask = %x, reg = %x, mem = %x", i,
+                 *(uint32_t *)&masks[i], *(uint32_t *)&invert_masks[i],
+                 *(uint32_t *)&reg_file_addr_8[i],
+                 *(uint32_t *)&last_access_host_addr[i]);
+          }
+          break;
+        case 8:
+          for (int i = 0; i < vle_size; i += 8) {
+            Logm("Element %i, mask = %lx, inv mask = %lx, reg = %lx, mem = %lx",
+                 i, *(uint64_t *)&masks[i], *(uint64_t *)&invert_masks[i],
+                 *(uint64_t *)&reg_file_addr_8[i],
+                 *(uint64_t *)&last_access_host_addr[i]);
+          }
+          break;
+        default:
+                panic("Unexpected vwidth = %d", s->v_width);
       }
-      continue;
+# endif // DEBUG_FAST_VLE
+
+      for (int i = 0; i < VLMAX_8; i++) {
+        invert_masks[i] = ~masks[i];
+        masks[i] &= last_access_host_addr_u8[i];
+        if (RVV_AGNOSTIC && vtype->vma) {
+          invert_masks[i] = 0xff;
+        } else {
+          invert_masks[i] &= reg_file_addr_8[i];
+        }
+        masks[i] |= invert_masks[i];
+      }
+      memcpy(reg_file_addr, masks, vle_size);
+      fast_vle = true;
     }
-    for (fn = 0; fn < nf; fn++) {
-      addr = base_addr + idx * stride + (idx * nf * is_stride + fn) * s->v_width;
-      rtl_lm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
-      set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, emul_coding, mode == MODE_MASK ? 0 : 1);
+  }
+#endif // CONFIG_SHARE
+
+  if (!fast_vle) {  // this block is the original slow path
+    for (idx = vstart->val; idx < vl_val; idx++, vstart->val++) {
+      rtlreg_t mask = get_mask(0, idx);
+      if (s->vm == 0 && mask == 0) {
+        if (RVV_AGNOSTIC && vtype->vma) {
+          tmp_reg[1] = (uint64_t) -1;
+          for (fn = 0; fn < nf; fn++) {
+            set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, 0, 0);
+          }
+        }
+        continue;
+      }
+      for (fn = 0; fn < nf; fn++) {
+        addr = base_addr + idx * stride + (idx * nf * is_unit_stride + fn) * s->v_width;
+
+        isa_vec_misalign_data_addr_check(addr, s->v_width, MEM_TYPE_READ);
+
+        rtl_lm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
+        set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, 0, 0);
+      }
     }
   }
 
+  // Tail agnostic is not handled in fast path
   if (RVV_AGNOSTIC && (mode == MODE_MASK || vtype->vta)) {   // set tail of vector register to 1
-    int vlmax =  mode == MODE_MASK ? VLEN / 8 : get_vlen_max(eew, emul_coding, 0);
+    int vlmax =  mode == MODE_MASK ? VLEN / 8 : get_vlen_max(eew, vemul, 0);
     for(idx = vl_val; idx < vlmax; idx++) {
       tmp_reg[1] = (uint64_t) -1;
       for (fn = 0; fn < nf; fn++) {
-        set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, emul_coding, mode == MODE_MASK ? 0 : 1);
+        set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, 0, 0);
       }
     }
   }
@@ -110,27 +377,27 @@ void vld(int mode, int is_signed, Decode *s, int mmu_mode) {
   vp_set_dirty();
 }
 
-void vldx(int mode, int is_signed, Decode *s, int mmu_mode) {
+void vldx(Decode *s, int mmu_mode) {
   //v_width 0  ->  8    SEW   0  ->  8
   //        5  ->  16         1  ->  16
   //        6  ->  32         2  ->  32
   //        7  ->  64         3  ->  64
+  index_vload_check(s);
   if(check_vstart_ignore(s)) return;
-  word_t idx;
+  uint64_t idx;
   uint64_t nf = s->v_nf + 1, fn, vl_val, base_addr, vd, index, addr;
-  int eew, lmul, index_width, data_length;
+  int eew, lmul, index_width, data_width;
 
   index_width = 0;
   eew = vtype->vsew;
-  s->v_width = s->isa.instr.vldfp.v_width;
   switch(s->v_width) {
-    case 0: index_width = 0; break;
-    case 5: index_width = 1; break;
-    case 6: index_width = 2; break;
-    case 7: index_width = 3; break;
+    case 1: index_width = 0; break;
+    case 2: index_width = 1; break;
+    case 4: index_width = 2; break;
+    case 8: index_width = 3; break;
     default: break;
   }
-  data_length = 1 << eew;
+  data_width = 1 << eew;
   lmul = vtype->vlmul > 4 ? vtype->vlmul - 8 : vtype->vlmul;
   isa_emul_check(lmul, nf);
   lmul = lmul < 0 ? 0 : lmul;
@@ -144,36 +411,37 @@ void vldx(int mode, int is_signed, Decode *s, int mmu_mode) {
   base_addr = tmp_reg[0];
   vd = id_dest->reg;
   for (idx = vstart->val; idx < vl_val; idx++, vstart->val++) {
-    rtlreg_t mask = get_mask(0, idx, vtype->vsew, vtype->vlmul);
+    rtlreg_t mask = get_mask(0, idx);
     if (s->vm == 0 && mask == 0) {
       if (RVV_AGNOSTIC && vtype->vma) {
         tmp_reg[1] = (uint64_t) -1;
         for (fn = 0; fn < nf; fn++) {
-          set_vreg(vd + fn * lmul, idx, tmp_reg[1], eew, vtype->vlmul, 1);
+          set_vreg(vd + fn * lmul, idx, tmp_reg[1], eew, 0, 0);
         }
       }
       continue;
     }
     for (fn = 0; fn < nf; fn++) {
       // read index
-      get_vreg(id_src2->reg, idx, &tmp_reg[2], index_width, vtype->vlmul, 0, 1);
+      get_vreg(id_src2->reg, idx, &tmp_reg[2], index_width, 0, 0, 0);
       index = tmp_reg[2];
 
       // read data in memory
-      addr = base_addr + index + fn * data_length;
-      s->v_is_vx = 1;
-      rtl_lm(s, &tmp_reg[1], &addr, 0, data_length, mmu_mode);
-      s->v_is_vx = 0;
-      set_vreg(vd + fn * lmul, idx, tmp_reg[1], eew, vtype->vlmul, 1);
+      addr = base_addr + index + fn * data_width;
+
+      isa_vec_misalign_data_addr_check(addr, data_width, MEM_TYPE_READ);
+
+      rtl_lm(s, &tmp_reg[1], &addr, 0, data_width, mmu_mode);
+      set_vreg(vd + fn * lmul, idx, tmp_reg[1], eew, 0, 0);
     }
   }
 
   if (RVV_AGNOSTIC && vtype->vta) {   // set tail of vector register to 1
-    int vlmax = get_vlen_max(eew, vtype->vlmul, 0);
+    int vlmax = get_vlen_max(vtype->vsew, vtype->vlmul, 0);
     for(idx = vl->val; idx < vlmax; idx++) {
       tmp_reg[1] = (uint64_t) -1;
       for (fn = 0; fn < nf; fn++) {
-        set_vreg(vd + fn * lmul, idx, tmp_reg[1], eew, vtype->vlmul, 1);
+        set_vreg(vd + fn * lmul, idx, tmp_reg[1], eew, 0, 0);
       }
     }
   }
@@ -183,11 +451,16 @@ void vldx(int mode, int is_signed, Decode *s, int mmu_mode) {
   vp_set_dirty();
 }
 
-void vst(int mode, Decode *s, int mmu_mode) {
+extern uint64_t g_nr_vst, g_nr_vst_unit, g_nr_vst_unit_optimized;
+
+void vst(Decode *s, int mode, int mmu_mode) {
+  vstore_check(mode, s);
   if(check_vstart_ignore(s)) return;
-  word_t idx;
-  uint64_t nf, fn, vl_val, base_addr, vd, addr;
-  int eew, emul, stride, is_stride;
+  g_nr_vst += 1;
+  uint64_t idx;
+  uint64_t nf, vl_val, base_addr, vd, addr, is_unit_stride;
+  int64_t stride;
+  int eew, emul;
 
   eew = 0;
   switch(s->v_width) {
@@ -204,10 +477,11 @@ void vst(int mode, Decode *s, int mmu_mode) {
 
   if (mode == MODE_STRIDED) {
     stride = id_src2->val;
-    is_stride = 0;
+    is_unit_stride = 0;
   } else {
     stride = 0;
-    is_stride = 1;
+    is_unit_stride = 1;
+    g_nr_vst_unit += 1;
   }
   // previous decode does not load vals for us
   rtl_lr(s, &(s->src1.val), s->src1.reg, 4);
@@ -217,15 +491,120 @@ void vst(int mode, Decode *s, int mmu_mode) {
   vl_val = mode == MODE_MASK ? (vl->val + 7) / 8 : vl->val;
   base_addr = tmp_reg[0];
   vd = id_dest->reg;
-  for (idx = vstart->val; idx < vl_val; idx++, vstart->val++) {
-    rtlreg_t mask = get_mask(0, idx, vtype->vsew, vtype->vlmul);
-    if (s->vm == 0 && mask == 0) {
-      continue;
+
+  bool fast_vse = false;
+
+#ifndef CONFIG_SHARE
+  uint64_t start_addr = base_addr + (vstart->val * nf) * s->v_width;
+  uint64_t last_addr = base_addr + (vl_val * nf - 1) * s->v_width;
+  uint64_t vse_size = last_addr - start_addr + s->v_width;
+  __attribute_maybe_unused__ bool cross_page = last_addr / PAGE_SIZE != start_addr / PAGE_SIZE;
+  uint8_t masks[VLMAX_8] = {0};
+
+  if (is_unit_stride && nf == 1 && vl_val > vstart->val && vtype->vlmul < 4 && !cross_page) {
+    assert(vl_val <= VLEN);
+    uint8_t invert_masks[VLMAX_8] = {0};
+
+    // get address of first element in memory; manually trigger isa_mmu_check.
+    // if exception happens, it will goto the exception handler.
+    s->last_access_host_addr = NULL;
+    extern void dummy_vaddr_write(struct Decode *s, vaddr_t addr, int len, int mmu_mode);
+    dummy_vaddr_write(s, start_addr, s->v_width, mmu_mode);
+    // Now we have the host address of first element in Decode *s->last_access_host_addr
+    if (s->last_access_host_addr != NULL) {
+
+      // get address of first element in register file
+      void *reg_file_addr = NULL;
+      get_vreg_with_addr(vd, vstart->val, &tmp_reg[1], eew, 0, 0, 0, &reg_file_addr);
+      Assert(reg_file_addr != NULL, "reg_file_addr is NULL");
+      uint8_t * restrict reg_file_addr_8 = reg_file_addr;
+
+      unsigned count = gen_mask_for_unit_stride(s, eew, vstart, vl_val, masks);
+
+      Logm("vst start_addr: %#lx, last_addr: %#lx, v_width: %u, vl_val: %lu, "
+          "vstart->val: %lu, v0: %016lx_%016lx, nf=%lu",
+          start_addr, last_addr, s->v_width, vl_val, vstart->val, cpu.vr[0]._64[1], cpu.vr[0]._64[0],
+          nf);
+      Logm("vse size = %lu, valid mask count = %u", vse_size, count);
+      Logm("mem base host addr = %p, reg file base host addr = %p", s->last_access_host_addr, reg_file_addr);
+
+      uint8_t * restrict last_access_addr_8 = s->last_access_host_addr;
+      for (int i = 0; i < VLMAX_8; i++) {
+        invert_masks[i] = ~masks[i];
+        masks[i] &= reg_file_addr_8[i];
+        invert_masks[i] &= last_access_addr_8[i];
+        masks[i] |= invert_masks[i];
+      }
+#ifdef CONFIG_DIFFTEST_STORE_COMMIT
+      extern void store_commit_queue_push(uint64_t addr, uint64_t data,
+                                          int len);
+      for (int i = 0; i < vse_size; i += s->v_width) {
+        // store_commit_queue_push((uint8_t *)s->last_access_host_addr), data, len);
+        switch (s->v_width) {
+          case 1: store_commit_queue_push(
+              host_to_guest((uint8_t *)s->last_access_host_addr + i),
+              masks[i], s->v_width, 0); break;
+          case 2: store_commit_queue_push(
+              host_to_guest((uint8_t *)s->last_access_host_addr + i),
+              *(uint16_t *)&masks[i], s->v_width, 0); break;
+          case 4: store_commit_queue_push(
+              host_to_guest((uint8_t *)s->last_access_host_addr + i),
+              *(uint32_t *)&masks[i], s->v_width, 0); break;
+          case 8: store_commit_queue_push(
+              host_to_guest((uint8_t *)s->last_access_host_addr + i),
+              *(uint64_t *)&masks[i], s->v_width, 0); break;
+          default: panic("Unexpected vwidth = %d", s->v_width);
+        }
+      }
+#endif
+      memcpy(s->last_access_host_addr, masks, vse_size);
+      fast_vse = true; // skip all operations
     }
-    for (fn = 0; fn < nf; fn++) {
-      get_vreg(vd + fn * emul, idx, &tmp_reg[1], eew, vtype->vlmul, 0, mode == MODE_MASK ? 0 : 1);
-      addr = base_addr + idx * stride + (idx * nf * is_stride + fn) * s->v_width;
-      rtl_sm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
+  }
+
+  g_nr_vst_unit_optimized += fast_vse;
+#endif // CONFIG_SHARE
+
+  // We enter this block if we are not able to optimize the store or we are debugging fast VSE
+  if (!fast_vse || ISDEF(DEBUG_FAST_VSE)) {  // this block is the original slow path
+    for (idx = vstart->val; idx < vl_val; idx++, vstart->val++) {
+      rtlreg_t mask = get_mask(0, idx);
+      if (s->vm == 0 && mask == 0) {
+#ifdef DEBUG_FAST_VSE
+        if (ISNDEF(CONFIG_SHARE) && ISDEF(CONFIG_DIFFTEST_STORE_COMMIT) && simple_vse) {
+          uint64_t offset = idx * stride + (idx * nf * is_unit_stride + 0) * s->v_width;
+          switch (s->v_width) {
+            case 1: assert(masks[offset] == 0); break;
+            case 2: assert(*(uint16_t *)&masks[offset] == 0); break;
+            case 4: assert(*(uint32_t *)&masks[offset] == 0); break;
+            case 8: assert(*(uint64_t *)&masks[offset] == 0); break;
+            default: panic("Unexpected vwidth = %d", s->v_width);
+          }
+        }
+#endif
+        continue;
+      }
+      for (unsigned fn = 0; fn < nf; fn++) {
+        get_vreg(vd + fn * emul, idx, &tmp_reg[1], eew, 0, 0, 0);
+        uint64_t offset = idx * stride + (idx * nf * is_unit_stride + fn) * s->v_width;
+        addr = base_addr + offset;
+        if (!fast_vse) {
+          isa_vec_misalign_data_addr_check(addr, s->v_width, MEM_TYPE_WRITE);
+
+          rtl_sm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
+        }
+#ifdef DEBUG_FAST_VSE
+        if (simple_vse) {
+          bool match = memcmp(&tmp_reg[1], &masks[offset], s->v_width) == 0;
+          if (!match) {
+            Logm("Mismatch at idx = %lu, fn = %u, offset = %lu, addr = %lx, "
+                "slow version = %lx, fast version = %lx", idx, fn, offset, addr,
+                tmp_reg[1], *(uint64_t *)&masks[offset]);
+            Assert(false, "Fast and slow version mismatch");
+          }
+        }
+#endif
+      }
     }
   }
 
@@ -233,23 +612,23 @@ void vst(int mode, Decode *s, int mmu_mode) {
   vp_set_dirty();
 }
 
-void vstx(int mode, Decode *s, int mmu_mode) {
+void vstx(Decode *s, int mmu_mode) {
+  index_vstore_check(s);
   if(check_vstart_ignore(s)) return;
-  word_t idx;
+  uint64_t idx;
   uint64_t nf = s->v_nf + 1, fn, vl_val, base_addr, vd, index, addr;
-  int eew, lmul, index_width, data_length;
+  int eew, lmul, index_width, data_width;
 
   index_width = 0;
   eew = vtype->vsew;
-  s->v_width = s->isa.instr.vldfp.v_width;
   switch(s->v_width) {
-    case 0: index_width = 0; break;
-    case 5: index_width = 1; break;
-    case 6: index_width = 2; break;
-    case 7: index_width = 3; break;
+    case 1: index_width = 0; break;
+    case 2: index_width = 1; break;
+    case 4: index_width = 2; break;
+    case 8: index_width = 3; break;
     default: break;
   }
-  data_length = 1 << eew;
+  data_width = 1 << eew;
   lmul = vtype->vlmul > 4 ? vtype->vlmul - 8 : vtype->vlmul;
   isa_emul_check(lmul, nf);
   lmul = lmul < 0 ? 0 : lmul;
@@ -263,21 +642,22 @@ void vstx(int mode, Decode *s, int mmu_mode) {
   base_addr = tmp_reg[0];
   vd = id_dest->reg;
   for (idx = vstart->val; idx < vl_val; idx++, vstart->val++) {
-    rtlreg_t mask = get_mask(0, idx, vtype->vsew, vtype->vlmul);
+    rtlreg_t mask = get_mask(0, idx);
     if (s->vm == 0 && mask == 0) {
       continue;
     }
     for (fn = 0; fn < nf; fn++) {
       // read index
-      get_vreg(id_src2->reg, idx, &tmp_reg[2], index_width, vtype->vlmul, 0, 1);
+      get_vreg(id_src2->reg, idx, &tmp_reg[2], index_width, 0, 0, 0);
       index = tmp_reg[2];
 
       // read data in vector register
-      get_vreg(vd + fn * lmul, idx, &tmp_reg[1], eew, vtype->vlmul, 0, 1);
-      addr = base_addr + index + fn * data_length;
-      s->v_is_vx = 1;
-      rtl_sm(s, &tmp_reg[1], &addr, 0, data_length, mmu_mode);
-      s->v_is_vx = 0;
+      get_vreg(vd + fn * lmul, idx, &tmp_reg[1], eew, 0, 0, 0);
+      addr = base_addr + index + fn * data_width;
+
+      isa_vec_misalign_data_addr_check(addr, data_width, MEM_TYPE_WRITE);
+
+      rtl_sm(s, &tmp_reg[1], &addr, 0, data_width, mmu_mode);
     }
   }
 
@@ -286,7 +666,7 @@ void vstx(int mode, Decode *s, int mmu_mode) {
   vp_set_dirty();
 }
 
-void isa_whole_reg_check(uint64_t vd, uint64_t nfields) {
+static void isa_whole_reg_check(uint64_t vd, uint64_t nfields) {
   if (nfields != 1 && nfields != 2 && nfields != 4 && nfields != 8) {
     Log("illegal NFIELDS for whole register instrs: NFIELDS:%lu", nfields);
     longjmp_exception(EX_II);
@@ -298,8 +678,8 @@ void isa_whole_reg_check(uint64_t vd, uint64_t nfields) {
   }
 }
 
-void vlr(int mode, int is_signed, Decode *s, int mmu_mode) {
-  word_t idx, vreg_idx, offset, pos;
+void vlr(Decode *s, int mmu_mode) {
+  uint64_t idx, vreg_idx, offset, pos;
   uint64_t len, base_addr, vd, addr, elt_per_reg, size;
   int eew;
 
@@ -332,6 +712,9 @@ void vlr(int mode, int is_signed, Decode *s, int mmu_mode) {
       // first vreg
       for (pos = offset; pos < elt_per_reg; pos++, vstart->val++) {
         addr = base_addr + idx * s->v_width;
+
+        isa_vec_misalign_data_addr_check(addr, s->v_width, MEM_TYPE_READ);
+
         rtl_lm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
         set_vreg(vd + vreg_idx, pos, tmp_reg[1], eew, 0, 1);
         idx++;
@@ -341,6 +724,9 @@ void vlr(int mode, int is_signed, Decode *s, int mmu_mode) {
     for (; vreg_idx < len; vreg_idx++) {
       for (pos = 0; pos < elt_per_reg; pos++, vstart->val++) {
         addr = base_addr + idx * s->v_width;
+
+        isa_vec_misalign_data_addr_check(addr, s->v_width, MEM_TYPE_READ);
+
         rtl_lm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
         set_vreg(vd + vreg_idx, pos, tmp_reg[1], eew, 0, 1);
         idx++;
@@ -352,8 +738,8 @@ void vlr(int mode, int is_signed, Decode *s, int mmu_mode) {
   vp_set_dirty();
 }
 
-void vsr(int mode, Decode *s, int mmu_mode) {
-  word_t idx, vreg_idx, offset, pos;
+void vsr(Decode *s, int mmu_mode) {
+  uint64_t idx, vreg_idx, offset, pos;
   uint64_t len, base_addr, vd, addr, elt_per_reg, size;
 
   // previous decode does not load vals for us
@@ -378,6 +764,9 @@ void vsr(int mode, Decode *s, int mmu_mode) {
         // read 1 byte and store 1 byte to memory
         get_vreg(vd + vreg_idx, pos, &tmp_reg[1], 0, 0, 0, 1);
         addr = base_addr + idx;
+
+        isa_vec_misalign_data_addr_check(addr, 1, MEM_TYPE_WRITE);
+
         rtl_sm(s, &tmp_reg[1], &addr, 0, 1, mmu_mode);
         idx++;
       }
@@ -388,6 +777,9 @@ void vsr(int mode, Decode *s, int mmu_mode) {
         // read 1 byte and store 1 byte to memory
         get_vreg(vd + vreg_idx, pos, &tmp_reg[1], 0, 0, 0, 1);
         addr = base_addr + idx;
+
+        isa_vec_misalign_data_addr_check(addr, 1, MEM_TYPE_WRITE);
+
         rtl_sm(s, &tmp_reg[1], &addr, 0, 1, mmu_mode);
         idx++;
       }
@@ -395,6 +787,174 @@ void vsr(int mode, Decode *s, int mmu_mode) {
   }
 
   vstart->val = 0;
+  vp_set_dirty();
+}
+
+
+void vldff(Decode *s, int mode, int mmu_mode) {
+  fofvl = 0;
+  vload_check(mode, s);
+  if(check_vstart_ignore(s)) return;
+  uint64_t idx;
+  uint64_t nf, fn, vl_val, base_addr, vd, addr, is_unit_stride;
+  int64_t stride;
+  int eew, emul, vemul;
+
+  // s->v_width is the bytes of a unit
+  // eew is the coding like vsew
+  eew = 0;
+  switch(s->v_width) {
+    case 1: eew = 0; break;
+    case 2: eew = 1; break;
+    case 4: eew = 2; break;
+    case 8: eew = 3; break;
+    default: break;
+  }
+  emul = vtype->vlmul > 4 ? vtype->vlmul - 8 + eew - vtype->vsew : vtype->vlmul + eew - vtype->vsew;
+  isa_emul_check(mode == MODE_MASK ? 1 : emul, 1);
+  emul = emul < 0 ? 0 : emul;
+  vemul = emul;
+  emul = 1 << emul;
+
+  if (mode == MODE_STRIDED) {
+    stride = id_src2->val;
+    is_unit_stride = 0;
+  } else {
+    stride = 0;
+    is_unit_stride = 1;
+  }
+  // previous decode does not load vals for us
+  rtl_lr(s, &(s->src1.val), s->src1.reg, 4);
+  rtl_mv(s, &(tmp_reg[0]), &(s->src1.val));
+
+  nf = s->v_nf + 1;
+  vl_val = mode == MODE_MASK ? (vl->val + 7) / 8 : vl->val;
+  base_addr = tmp_reg[0];
+  vd = id_dest->reg;
+
+  bool fast_vle = false;
+
+#ifndef CONFIG_SHARE
+  uint64_t start_addr = base_addr + (vstart->val * nf) * s->v_width;
+  uint64_t last_addr = base_addr + (vl_val * nf - 1) * s->v_width;
+  uint64_t vle_size = last_addr - start_addr + s->v_width;
+  __attribute_maybe_unused__ bool cross_page = last_addr / PAGE_SIZE != start_addr / PAGE_SIZE;
+  uint8_t masks[VLMAX_8] = {0};
+
+  Logm("vld start_addr: %#lx, v_width: %u, vl_val: %lu, vle size=%lu, vstart->val: %lu, nf=%lu",
+      base_addr, s->v_width, vl_val, vle_size, vstart->val, nf);
+
+  if (is_unit_stride && nf == 1 && vl_val > vstart->val && vtype->vlmul < 4 && !cross_page) {
+    s->last_access_host_addr = NULL;
+    extern void dummy_vaddr_data_read(struct Decode *s, vaddr_t addr, int len, int mmu_mode);
+    dummy_vaddr_data_read(s, start_addr, s->v_width, mmu_mode);
+    // Now we have the host address of first element in Decode *s->last_access_host_addr
+    if (s->last_access_host_addr != NULL) {
+
+      // get address of first element in register file
+      void *reg_file_addr = NULL;
+      get_vreg_with_addr(vd, vstart->val, &tmp_reg[1], eew, 0, 0, 0, &reg_file_addr);
+      Assert(reg_file_addr != NULL, "reg_file_addr is NULL");
+      uint8_t * restrict reg_file_addr_8 = reg_file_addr;
+
+      __attribute_maybe_unused__ unsigned count = gen_mask_for_unit_stride(s, eew, vstart, vl_val, masks);
+
+      uint8_t invert_masks[VLMAX_8] = {0};
+      uint8_t * restrict last_access_host_addr_u8 = s->last_access_host_addr;
+
+#ifdef DEBUG_FAST_VLE
+      switch (s->v_width) {
+        case 1: for (int i = 0; i < vle_size; i++) {
+            Logm("Element %i, mask = %x, inv mask = %x, reg = %x, mem = %x", i,
+                 masks[i], invert_masks[i], reg_file_addr_8[i],
+                 last_access_host_addr[i]);
+          }
+          break;
+        case 2:
+          for (int i = 0; i < vle_size; i += 2) {
+            Logm("Element %i, mask = %x, inv mask = %x, reg = %x, mem = %x", i,
+                 *(uint16_t *)&masks[i], *(uint16_t *)&invert_masks[i],
+                 *(uint16_t *)&reg_file_addr_8[i],
+                 *(uint16_t *)&last_access_host_addr[i]);
+          }
+          break;
+        case 4:
+          for (int i = 0; i < vle_size; i += 4) {
+            Logm("Element %i, mask = %x, inv mask = %x, reg = %x, mem = %x", i,
+                 *(uint32_t *)&masks[i], *(uint32_t *)&invert_masks[i],
+                 *(uint32_t *)&reg_file_addr_8[i],
+                 *(uint32_t *)&last_access_host_addr[i]);
+          }
+          break;
+        case 8:
+          for (int i = 0; i < vle_size; i += 8) {
+            Logm("Element %i, mask = %lx, inv mask = %lx, reg = %lx, mem = %lx",
+                 i, *(uint64_t *)&masks[i], *(uint64_t *)&invert_masks[i],
+                 *(uint64_t *)&reg_file_addr_8[i],
+                 *(uint64_t *)&last_access_host_addr[i]);
+          }
+          break;
+        default:
+                panic("Unexpected vwidth = %d", s->v_width);
+      }
+# endif // DEBUG_FAST_VLE
+
+      for (int i = 0; i < VLMAX_8; i++) {
+        invert_masks[i] = ~masks[i];
+        masks[i] &= last_access_host_addr_u8[i];
+        if (RVV_AGNOSTIC && vtype->vma) {
+          invert_masks[i] = 0xff;
+        } else {
+          invert_masks[i] &= reg_file_addr_8[i];
+        }
+        masks[i] |= invert_masks[i];
+      }
+      memcpy(reg_file_addr, masks, vle_size);
+      fast_vle = true;
+    }
+  }
+#endif // CONFIG_SHARE
+
+  if (!fast_vle) {  // this block is the original slow path
+    for (idx = vstart->val; idx < vl_val; idx++) {
+      rtlreg_t mask = get_mask(0, idx);
+      if (s->vm == 0 && mask == 0) {
+        if (RVV_AGNOSTIC && vtype->vma) {
+          tmp_reg[1] = (uint64_t) -1;
+          for (fn = 0; fn < nf; fn++) {
+            set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, 0, 0);
+          }
+        }
+        continue;
+      }
+      for (fn = 0; fn < nf; fn++) {
+        addr = base_addr + idx * stride + (idx * nf * is_unit_stride + fn) * s->v_width;
+
+        if (idx != 0) {
+          fofvl = idx;
+          mtvaltmp = INTR_TVAL_REG(EX_LAF);
+        }
+
+        isa_vec_misalign_data_addr_check(addr, s->v_width, MEM_TYPE_READ);
+        rtl_lm(s, &tmp_reg[1], &addr, 0, s->v_width, mmu_mode);
+        set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, 0, 0);
+      }
+    }
+  }
+
+  // Tail agnostic is not handled in fast path
+  if (RVV_AGNOSTIC && (mode == MODE_MASK || vtype->vta)) {   // set tail of vector register to 1
+    int vlmax =  mode == MODE_MASK ? VLEN / 8 : get_vlen_max(eew, vemul, 0);
+    for(idx = vl_val; idx < vlmax; idx++) {
+      tmp_reg[1] = (uint64_t) -1;
+      for (fn = 0; fn < nf; fn++) {
+        set_vreg(vd + fn * emul, idx, tmp_reg[1], eew, 0, 0);
+      }
+    }
+  }
+
+  vstart->val = 0;
+  fofvl = 0;
   vp_set_dirty();
 }
 

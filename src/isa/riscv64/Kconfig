@@ -12,13 +12,38 @@ config RVB
   bool "RISC-V Bitmanip Extension v1.0"
   default y
 
+config RV_CBO
+  bool "RISC-V Zicbom & Zicboz Extension"
+  default n
+
 config RVK
   bool "RISC-V Cryptography Extension v1.0"
   default y
 
-config RVZICOND
+config RV_ZICOND
   bool "RISC-V Integer Conditional (Zicond) Operations Extension v1.0"
   default y
+
+config RV_ZFH
+  bool "RISC-V Zfh Extensions V1.0"
+  depends on RV_ZFH_MIN
+  default n
+
+config RV_ZFH_MIN
+  bool "RISC-V Zfhmin Extensions V1.0"
+  depends on !FPU_NONE
+  default y
+
+config RV_ZFA
+  bool "RISC-V Zfa Extensions V1.0"
+  depends on !FPU_NONE
+  default n
+
+config RV_ZFH_ZFA
+  bool "RISC-V Zfa Extensions V1.0 (enabled Zfh Extensions)"
+  depends on RV_ZFH
+  depends on RV_ZFA
+  default n
 
 config RVV
   depends on !FPU_NONE
@@ -38,20 +63,94 @@ config RVH
   bool "RISC-V Hypervisor Extension v1.0"
   default y
 
-config RVSDEXT
+config RV_SDEXT
   bool "(Beta) RISC-V Sdext ISA Extension v1.0"
   depends on RV_DEBUG
   default n
 
-config RVSDTRIG
+config RV_SDTRIG
   bool "(Beta) RISC-V Sdtrig ISA Extension v1.0"
   depends on RV_DEBUG
   default n
 
 config TRIGGER_NUM
   int "Number of supported triggers"
-  depends on RVSDTRIG
+  depends on RV_SDTRIG
   default 10
+
+config RV_AIA
+  bool "(Beta) RISC-V Advanced Interrupt Architecture v1.0"
+  depends on RVH
+  default n
+
+config RV_IMSIC
+  bool "Incoming MSI Controller"
+  depends on RV_AIA
+  default n
+
+config RV_SSTC
+  bool "RISC-V Sstc Extension for Supervisor-mode Timer Interrupts"
+  default n
+
+menuconfig RV_ZICNTR
+  bool "RISC-V Zicntr Extensions for Base Counters and Timers, v2.0"
+  default y
+  help
+    The Zicntr standard extension comprises the unprivileged Base counters and
+    timers (CYCLE, TIME, and INSTRET), which have dedicated functions (cycle
+    count, real-time clock, and instructions retired, respectively).
+
+    INFO: the CPI (cycles per instruction) of NEMU is set to 1.
+
+if RV_ZICNTR
+config RV_CSR_TIME
+  bool "Implement CSR time (0xc01)"
+  default n
+  help
+    If n, accessing to CSR time will raise illegal instruction exception.
+
+    Regardless of how this option is set, the TM bit of m/h/scounteren is
+    always writable to allow machine programs to simulate reading the time
+    register.
+
+endif # RV_ZICNTR
+
+config RV_ZIHPM
+  bool "RISC-V Zihpm Extensions for Hardware Performance Counters, v2.0" 
+  default y
+  help
+    The Zihpm extension comprises up to 29 additional unprivileged 64-bit
+    hardware performance counters, hpmcounter3-hpmcounter31.
+
+    Because mhpmcountern and mhpmeventn are all read-only zero on NEMU,
+    hpmcountern are also read-only zero.
+
+menuconfig RV_CSR_MCOUNTINHIBIT
+  bool "Machine Counter-Inhibit CSR (mcountinhibit)"
+  default y
+  help
+    This decides whether CSR mcountinhibit is implemented.
+
+if RV_CSR_MCOUNTINHIBIT
+config RV_CSR_MCOUNTINHIBIT_CNTR
+  bool "Support inhibit mcycle and minstret"
+  default y
+  help
+    This enables writing to CY and IR bits in the mcountinhibit and support
+    for inhibiting mcycle and minstret. Otherwise, these bits will be read-only
+    zero.
+
+config RV_CSR_MCOUNTINHIBIT_HPM
+  bool "Support inhibit mhpmcounter3 - mhpmcounter31"
+  default y
+  help
+    This enables writing to HPMn bits in the mcountinhibit. Otherwise, these
+    bits will be read-only zero.
+
+    Besides, mhpmcountern and mhpmeventn are all read-only zero on NEMU, 
+    regardless of how HPMn bits are set in mcountinhibit.
+
+endif
 
 choice
   prompt "Number of implemented PMP entries"
@@ -141,10 +240,77 @@ config RV_SVINVAL
   bool "Enable VM Extension Svinval"
   default y
 
+choice
+  prompt "Page-Based Virtual-Memory System Capability"
+  default RV_SV39
+  help
+    This config decides the capability of Page-Based Virtual-Memory System,
+    which affects the MODE field of CSR satp, vsatp and hgatp.
+    
+    According to RISC-V Privileged ISA, Virtual memory systems for RV64 are
+    backward compatible. So this config specifies the highest supported
+    virtual-memory system.
+
+config RV_SV39
+  bool "Sv39"
+  help
+    Support Sv39. 
+    
+    The MODE field of CSR satp and vsatp could be set to Bare or Sv39, and
+    the MODE field of CSR hgatp could be set to Bare or Sv39x4.
+  
+config RV_SV48
+  bool "Sv48"
+  help
+    Support Sv39 and Sv48.
+    
+    The MODE field of CSR satp and vsatp could be set to Bare, Sv39 or Sv48,
+    and the MODE field of CSR hgatp could be set to Bare, Sv39x4 or Sv48x4.
+
+# config RV_SV57
+#   bool "Sv57"
+#   help
+#     Support Sv39, Sv48 and Sv57.
+    
+#     The MODE field of CSR satp and vsatp could be set to Bare, Sv39, Sv48 or
+#     Sv47, and the MODE field of CSR hgatp could be set to Bare, Sv39x4, Sv48x4
+#     or Sv57x4.
+
+endchoice
+
+config RV_SVNAPOT
+  bool "RISC-V Svnapot extension for NAPOT Translation Contiguity (alpha)"
+  default n
+  help
+    This allows the N bit of the leaf PTEs to be set. Beyond this, this option
+    DOES NOT SUPPORT other requirements of the Svnapot extension.
+
+config RV_SVPBMT
+  bool "RISC-V Svpbmt extension for Page-Based Memory Types (alpha)"
+  default n
+  help
+    This allows the PBMT bits of the leaf PTEs to be non-zero (except for the
+    value 3) without raising a page-fault exception. Beyond this, this option
+    DOES NOT SUPPORT other requirements of the Svpbmt extension.
+
 config RV_MSTATUS_FS_WRITABLE
   depends on FPU_NONE
   bool "make mstatus.fs writable; required for software FPU emulation"
   default y
+
+config RV_SSCOFPMF
+  bool "(Beta)Enable Sscofpmf extension(Supervisor-level Count OverFlow and Privilege Mode Filtering)"
+  default n
+
+config RV_SHLCOFIDELEG
+  depends on RVH
+  depends on RV_SSCOFPMF
+  bool "Enable Shlcofideleg extension(make sip.LCOFIP delegable to VS mode)"
+  default n
+
+config RV_SMSTATEEN
+  bool "(Beta)Enable Smstateen extension"
+  default n
 
 config MISA_UNCHANGEABLE
   bool "Make misa cannot be changed by CSR write instructions like XS"
@@ -198,5 +364,18 @@ config EBREAK_AS_TRAP
   depends on !RV_DEBUG
   bool "Treat ebreak same as nemu_trap"
   default n
+
+config RV_ZCMOP
+  bool "RISC-V Zcmop Extension for Compressed May-Be-Operations (non-functional), v1.0"
+  default n
+  help
+    This adds C.MOP.n instructions without any function. Executing C.MOP.n just
+    does nothing.
+
+config RV_ZIMOP
+  bool "RISC-V Extension for May-Be-Operations, Version 1.0"
+  default n
+  help
+    This extension adds MOP.R.n and MOP.RR.n instructions which just write rd with 0s.
 
 endmenu

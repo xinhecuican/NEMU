@@ -37,6 +37,12 @@ static inline uint32_t get_instr(Decode *s) {
 #include "rvi/decode.h"
 #ifndef CONFIG_FPU_NONE
 #include "rvf/decode.h"
+#ifdef CONFIG_RV_ZFH_MIN
+#include "rvzfh/decode.h"
+#endif // CONFIG_RV_ZFH_MIN
+#ifdef CONFIG_RV_ZFA
+#include "rvzfa/decode.h"
+#endif
 #endif // CONFIG_FPU_NONE
 #include "rvm/decode.h"
 #include "rva/decode.h"
@@ -48,12 +54,18 @@ static inline uint32_t get_instr(Decode *s) {
 #ifdef CONFIG_RVV
 #include "rvv/decode.h"
 #endif // CONFIG_RVV
+#ifdef CONFIG_RV_CBO
+#include "rvcbo/decode.h"
+#endif// CONFIG_RV_CBO
 
 def_THelper(main) {
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 00000 ??", I     , load);
 #ifndef CONFIG_FPU_NONE
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 00001 ??", fload , fload);
 #endif // CONFIG_FPU_NONE
+#ifdef CONFIG_RV_CBO
+  def_INSTR_IDTAB("??????? ????? ????? 010 00000 00011 11", R     , cbo);
+#endif // CONFIG_RV_CBO
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 00011 ??", I     , mem_fence);
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 00100 ??", I     , op_imm);
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 00101 ??", auipc , auipc);
@@ -93,7 +105,7 @@ def_THelper(main) {
 int isa_fetch_decode(Decode *s) {
   int idx = EXEC_ID_inv;
 
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
   trig_action_t action = TRIG_ACTION_NONE;
   if (cpu.TM->check_timings.bf) {
     action = tm_check_hit(cpu.TM, TRIG_OP_EXECUTE, s->snpc, TRIGGER_NO_VALUE);
@@ -115,7 +127,7 @@ int isa_fetch_decode(Decode *s) {
     idx = table_main(s);
   }
 
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
   if (cpu.TM->check_timings.af) {
     action = tm_check_hit(cpu.TM, TRIG_OP_EXECUTE | TRIG_OP_TIMING, s->snpc, s->isa.instr.val);
   }

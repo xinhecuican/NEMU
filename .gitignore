@@ -7,10 +7,11 @@
 !*.cpp
 !*.lds
 !.gitignore
+!Dockerfile
 !README.md
-!scripts/runall.sh
 !Kconfig
 !.github/workflows/ci.yml
+!scripts/*.sh
 !scripts/checkpoint_example/*
 include/config
 include/generated

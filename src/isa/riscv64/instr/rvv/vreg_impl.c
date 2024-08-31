@@ -40,7 +40,7 @@ rtlreg_t check_vsetvl(rtlreg_t vtype_req, rtlreg_t vl_req, int mode) {
   if (mode == 1) {
     return VLMAX;
   } else if (mode == 2) {
-    return old_vl;
+    return old_vl < VLMAX ? old_vl : VLMAX;
   } else {
     if (vt.vsew > 3) { //check if max-len supported
       return (uint64_t)-1; //return 0 means error, including vl_req is 0, for vl_req should not be 0.
@@ -55,7 +55,7 @@ rtlreg_t check_vsetvl(rtlreg_t vtype_req, rtlreg_t vl_req, int mode) {
   }
 }
 
-rtlreg_t get_mask(int reg, int idx, uint64_t vsew, uint64_t vlmul) {
+rtlreg_t get_mask(int reg, int idx) {
   int idx1 = idx / 64;
   int idx2 = idx % 64;
   
@@ -75,8 +75,27 @@ void set_mask(uint32_t reg, int idx, uint64_t mask, uint64_t vsew, uint64_t vlmu
 }
 
 int get_vlmax(int vsew, int vlmul) {
-  if (vlmul > 4) vlmul -= 8;
-  return VLEN >> (3 + vsew - vlmul);
+  if (vlmul > 4) {
+    int sew = 8 << vsew;
+    switch(vlmul) {
+      case 5: return VLEN / sew / 8;
+      case 6: return VLEN / sew / 4;
+      case 7: return VLEN / sew / 2;
+      default: panic("Unexpected vlmul\n");
+    }
+  } else if (vlmul < 4) {
+    int sew = 8 << vsew;
+    switch(vlmul) {
+      case 0: return VLEN / sew;
+      case 1: return VLEN / sew * 2;
+      case 2: return VLEN / sew * 4;
+      case 3: return VLEN / sew * 8;
+      default: panic("Unexpected vlmul\n");
+    }
+  } else {
+    Loge("vlmul = 4 is reserved\n");
+    return -1;
+  }
 }
 
 int get_vlen_max(int vsew, int vlmul, int widening) {
@@ -102,7 +121,7 @@ int get_idx(uint64_t reg, int idx, uint64_t vsew) {
 void isa_misalign_vreg_check(uint64_t reg, uint64_t vlmul, int needAlign) {
   if (needAlign && vlmul < 4) {
     if (reg % (1 << vlmul) != 0) {
-      Log("vector register group misaligned happen: reg:x%lu vlmul:0x%lx needAlign:%d", reg, vlmul, needAlign);
+      Loge("vector register group misaligned happen: reg:x%lu vlmul:0x%lx needAlign:%d", reg, vlmul, needAlign);
       longjmp_exception(EX_II);
     }
   }
@@ -119,6 +138,35 @@ void get_vreg(uint64_t reg, int idx, rtlreg_t *dst, uint64_t vsew, uint64_t vlmu
     case 1 : *dst = is_signed ? (int64_t)(int16_t)vreg_s(new_reg, new_idx) : vreg_s(new_reg, new_idx); break;
     case 2 : *dst = is_signed ? (int64_t)(int32_t)vreg_i(new_reg, new_idx) : vreg_i(new_reg, new_idx); break;
     case 3 : *dst = is_signed ? (int64_t)         vreg_l(new_reg, new_idx) : vreg_l(new_reg, new_idx); break;
+  }
+}
+
+void get_vreg_with_addr(uint64_t reg, int idx, rtlreg_t *dst, uint64_t vsew, uint64_t vlmul, int is_signed, int needAlign, void **addr) {
+  Assert(vlmul != 4, "vlmul = 4 is reserved\n");
+  Assert(vsew <= 3, "vsew should be less than 4\n");
+  isa_misalign_vreg_check(reg, vlmul, needAlign);
+  int new_reg = get_reg(reg, idx, vsew);
+  int new_idx = get_idx(reg, idx, vsew);
+  switch (vsew) {
+    case 0 :
+    *dst = is_signed ? (int64_t)(int8_t )vreg_b(new_reg, new_idx) : vreg_b(new_reg, new_idx);
+    *addr = (void *) &vreg_b(new_reg, new_idx);
+    break;
+
+    case 1 :
+    *dst = is_signed ? (int64_t)(int16_t)vreg_s(new_reg, new_idx) : vreg_s(new_reg, new_idx);
+    *addr = (void *) &vreg_s(new_reg, new_idx);
+    break;
+
+    case 2 :
+    *dst = is_signed ? (int64_t)(int32_t)vreg_i(new_reg, new_idx) : vreg_i(new_reg, new_idx);
+    *addr = (void *) &vreg_i(new_reg, new_idx);
+    break;
+
+    case 3 :
+    *dst = is_signed ? (int64_t)         vreg_l(new_reg, new_idx) : vreg_l(new_reg, new_idx);
+    *addr = (void *) &vreg_l(new_reg, new_idx);
+    break;
   }
 }
 
@@ -140,14 +188,6 @@ void set_vreg(uint64_t reg, int idx, rtlreg_t src, uint64_t vsew, uint64_t vlmul
     case 1 : vreg_s(new_reg, new_idx) = (uint16_t )src; break;
     case 2 : vreg_i(new_reg, new_idx) = (uint32_t )src; break;
     case 3 : vreg_l(new_reg, new_idx) = (uint64_t )src; break;
-  }
-}
-
-void init_tmp_vreg() {
-  for (int i = 0; i < 8; i++) {
-    for (int j = 0; j < VLEN / 64; j++) {
-      tmp_vreg[i]._64[j] = 0;
-    }
   }
 }
 
@@ -194,10 +234,6 @@ void set_vreg_tail(uint64_t reg) {
   for (int i = 0; i < VLEN / 64; i++) {
     vreg_l(reg, i) = 0xffffffffffffffff;
   }
-}
-
-void longjmp_raise_intr(uint32_t foo) {
-    assert(0);
 }
 
 #endif // CONFIG_RVV

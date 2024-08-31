@@ -29,7 +29,7 @@ enum {
   EX_SAM, // store/amo address misaligned
   EX_SAF, // store/amo address fault
   EX_ECU, // ecall from U-mode or VU-mode
-  EX_ECS, // ecall from HS-mode 
+  EX_ECS, // ecall from HS-mode
   EX_ECVS,// ecall from VS-mode, H-extention
   EX_ECM, // ecall from M-mode
   EX_IPF, // instruction page fault
@@ -41,6 +41,42 @@ enum {
   EX_VI,  // virtual instruction, H-extention
   EX_SGPF // store/amo guest-page fault, H-extention
 };
+
+enum {
+  IRQ_USIP,  // reserved yet
+  IRQ_SSIP,
+  IRQ_VSSIP,
+  IRQ_MSIP,
+  IRQ_UTIP,  // reserved yet
+  IRQ_STIP,
+  IRQ_VSTIP,
+  IRQ_MTIP,
+  IRQ_UEIP,  // reserved yet
+  IRQ_SEIP,
+  IRQ_VSEIP,
+  IRQ_MEIP,
+  IRQ_SGEI,  // Supervisor guest external interrupt
+  IRQ_LCOFI, // Local counter overflow interrupt
+};
+
+#define INTR_BIT (1ULL << 63)
+
+#define MIP_SSIP   (1ULL << IRQ_SSIP)
+#define MIP_VSSIP  (1ULL << IRQ_VSSIP)
+#define MIP_MSIP   (1ULL << IRQ_MSIP)
+#define MIP_STIP   (1ULL << IRQ_STIP)
+#define MIP_VSTIP  (1ULL << IRQ_VSTIP)
+#define MIP_MTIP   (1ULL << IRQ_MTIP)
+#define MIP_SEIP   (1ULL << IRQ_SEIP)
+#define MIP_VSEIP  (1ULL << IRQ_VSEIP)
+#define MIP_MEIP   (1ULL << IRQ_MEIP)
+#define MIP_SGEIP  (1ULL << IRQ_SGEI)
+#define MIP_LCOFIP (1ULL << IRQ_LCOFI)
+
+#define VSI_MASK   (MIP_VSSIP | MIP_VSTIP | MIP_VSEIP)
+#define HSI_MASK   (VSI_MASK | MIP_SGEIP)
+#define SI_MASK    (MIP_SSIP | MIP_STIP | MIP_SEIP)
+#define LCI_MASK   (~0x1FFFULL)
 
 // now NEMU does not support EX_IAM,
 // so it may ok to use EX_IAM to indicate a successful memory access
@@ -58,5 +94,5 @@ bool intr_deleg_VS(word_t exceptionNO);
 #endif
 
 #ifdef CONFIG_USE_XS_ARCH_CSRS
-word_t INTR_TVAL_SV39_SEXT(word_t vaddr);
+word_t INTR_TVAL_SV48_SEXT(word_t vaddr);
 #endif

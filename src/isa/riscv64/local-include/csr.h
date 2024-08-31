@@ -18,6 +18,14 @@
 #define __CSR_H__
 
 #include <common.h>
+#include <memory/vaddr.h>
+
+#define FUNCT3_CSRRW  1
+#define FUNCT3_CSRRS  2
+#define FUNCT3_CSRRC  3
+#define FUNCT3_CSRRWI 5
+#define FUNCT3_CSRRSI 6
+#define FUNCT3_CSRRCI 7
 
 /**
  * Mapping between CSR name and addr
@@ -35,14 +43,25 @@
 #endif // CONFIG_FPU_NONE
 
 /** Unprivileged Counter/Timers **/
-#ifdef CONFIG_RV_Zicntr
-  #define CSRS_UNPRIV_CNTR(f) \
-    f(cycle      , 0xC00) f(time       , 0xC01) f(instret    , 0xC02)
-#else // CONFIG_RV_Zicntr
-  #define CSRS_UNPRIV_CNTR(f)
-#endif // CONFIG_RV_Zicntr
+#ifdef CONFIG_RV_CSR_TIME
+  #define CSRS_UNPRIV_TIME(f) \
+    f(csr_time   , 0xC01)
+#else // CONFIG_RV_CSR_TIME
+  #define CSRS_UNPRIV_TIME(f)
+#endif // CONFIG_RV_CSR_TIME
 
-#ifdef CONFIG_RV_Zihpm
+#ifdef CONFIG_RV_ZICNTR
+  #define CSRS_UNPRIV_CNTR(f) \
+    f(cycle      , 0xC00) \
+    CSRS_UNPRIV_TIME(f) \
+    f(instret    , 0xC02)
+    // There is `time_t` type in the C programming language.
+    // So We have to use another name for CSR time.
+#else // CONFIG_RV_ZICNTR
+  #define CSRS_UNPRIV_CNTR(f)
+#endif // CONFIG_RV_ZICNTR
+
+#ifdef CONFIG_RV_ZIHPM
   #define CSRS_UNPRIV_HPMCOUNTER(f) \
     f(hpmcounter3    , 0xC03) \
     f(hpmcounter4    , 0xC04) f(hpmcounter5    , 0xC05) f(hpmcounter6    , 0xC06) f(hpmcounter7    , 0xC07) \
@@ -52,9 +71,9 @@
     f(hpmcounter20   , 0xC14) f(hpmcounter21   , 0xC15) f(hpmcounter22   , 0xC16) f(hpmcounter23   , 0xC17) \
     f(hpmcounter24   , 0xC18) f(hpmcounter25   , 0xC19) f(hpmcounter26   , 0xC1A) f(hpmcounter27   , 0xC1B) \
     f(hpmcounter28   , 0xC1C) f(hpmcounter29   , 0xC1D) f(hpmcounter30   , 0xC1E) f(hpmcounter31   , 0xC1F)
-#else // CONFIG_RV_Zihpm
+#else // CONFIG_RV_ZIHPM
   #define CSRS_UNPRIV_HPMCOUNTER(f)
-#endif // CONFIG_RV_Zihpm
+#endif // CONFIG_RV_ZIHPM
 
 #define CSRS_UNPRIV_COUNTER_TIMERS(f) \
   CSRS_UNPRIV_CNTR(f) \
@@ -105,15 +124,29 @@
   f(satp       , 0x180)
 
 /** Debug/Trace Registers (Trigger Module Registers) **/
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
   #define CSRS_S_DEBUG_TRACE(f) \
     f(scontext   , 0x6A8)
-#else // CONFIG_RVSDTRIG
+#else // CONFIG_RV_SDTRIG
   #define CSRS_S_DEBUG_TRACE(f)
-#endif // CONFIG_RVSDTRIG
+#endif // CONFIG_RV_SDTRIG
 
 /** Supervisor State Enable Registers **/
-#define CSRS_S_STATE_ENABLE(f)
+#ifdef CONFIG_RV_SMSTATEEN
+  #define CSRS_S_STATE_ENABLE(f) \
+    f(sstateen0 , 0x10C) 
+#else
+  #define CSRS_S_STATE_ENABLE(f)
+#endif // CONFIG_RV_SMSTATEEN
+
+/** Supervisor Counter Overflow Register **/
+#ifdef CONFIG_RV_SSCOFPMF
+  #define CSRS_S_SCOFPMF(f) \
+    f(scountovf, 0xDA0)
+#else
+  #define CSRS_S_SCOFPMF(f)
+#endif // CONFIG_RV_SSCOFPMF
+
 
 /** Supervisor Custom 1 **/
 #ifdef CONFIG_RV_SVINVAL
@@ -129,6 +162,24 @@
 #define CSRS_S_CUSTOM_1(f) \
   CSRS_S_XIANGSHAN_CTRL(f)
 
+/** Supervisor Timer Register **/
+#ifdef CONFIG_RV_SSTC
+  #define CSRS_S_SSTC(f) \
+    f(stimecmp, 0x14D)
+#else
+  #define CSRS_S_SSTC(f)
+#endif
+
+
+/** Supervisor Advanced Interrupt Architecture Registers **/
+#ifdef CONFIG_RV_IMSIC
+  #define CSRS_S_AIA(f) \
+    f(siselect , 0x150) f(sireg   , 0x151) \
+    f(stopei   , 0x15C) f(stopi   , 0xDB0)
+#else
+  #define CSRS_S_AIA(f)
+#endif // CONFIG_RV_IMSIC
+
 /** ALL **/
 #define CSRS_S(f) \
   CSRS_S_TRAP_SETUP(f) \
@@ -138,6 +189,9 @@
   CSRS_S_PROTECTION_TRANSLATION(f) \
   CSRS_S_DEBUG_TRACE(f) \
   CSRS_S_STATE_ENABLE(f) \
+  CSRS_S_SCOFPMF(f) \
+  CSRS_S_AIA(f) \
+  CSRS_S_SSTC(f) \
   CSRS_S_CUSTOM_1(f)
 
 
@@ -162,22 +216,48 @@
     f(hgatp      , 0x680)
 
   /** Debug/Trace Registers (Trigger Module Registers) **/
-  #ifdef CONFIG_RVSDTRIG
+  #ifdef CONFIG_RV_SDTRIG
     #define CSRS_H_DEBUG_TRACE(f) \
       f(hcontext   , 0x6A8)
-  #else // CONFIG_RVSDTRIG
+  #else // CONFIG_RV_SDTRIG
     #define CSRS_H_DEBUG_TRACE(f)
-  #endif // CONFIG_RVSDTRIG
+  #endif // CONFIG_RV_SDTRIG
 
   /** Hypervisor Counter/Timer Virtualization Registers **/
   #define CSRS_H_CONUTER_TIMER_VIRTUALIZATION(f) \
     f(htimedelta , 0x605)
+
+  /** Hypervisor State Enable Registers **/
+  #ifdef CONFIG_RV_SMSTATEEN
+    #define CSRS_H_STATE_ENABLE(f) \
+      f(hstateen0 , 0x60C) 
+  #else
+    #define CSRS_H_STATE_ENABLE(f)
+  #endif // CONFIG_RV_SMSTATEEN
 
   /** Virtual Supervisor Registers **/
   #define CSRS_VS(f) \
     f(vsstatus   , 0x200) f(vsie       , 0x204) f(vstvec     , 0x205) \
     f(vsscratch  , 0x240) f(vsepc      , 0x241) f(vscause    , 0x242) \
     f(vstval     , 0x243) f(vsip       , 0x244) f(vsatp      , 0x280)
+
+  /** Hypervisor and VS AIA Registers **/
+  #ifdef CONFIG_RV_IMSIC
+    #define CSRS_H_VS_AIA(f) \
+      f(vsiselect  , 0x250) f(vsireg     , 0x251) \
+      f(vstopei    , 0x25C) f(hvien      , 0x608) \
+      f(hvictl     , 0x609) f(hviprio1   , 0x646) \
+      f(hviprio2   , 0x647) f(vstopi     , 0xEB0)
+  #else
+    #define CSRS_H_VS_AIA(f)
+  #endif // CONFIG_RV_IMSIC
+
+  #ifdef CONFIG_RV_SSTC
+    #define CSRS_VS_SSTC(f) \
+      f(vstimecmp , 0x24D)
+  #else
+    #define CSRS_VS_SSTC(f)
+  #endif
 
   /** ALL **/
   #define CSRS_H_VS(f) \
@@ -187,6 +267,9 @@
     CSRS_H_PROTECTION_TRANSLATION(f) \
     CSRS_H_DEBUG_TRACE(f) \
     CSRS_H_CONUTER_TIMER_VIRTUALIZATION(f) \
+    CSRS_H_STATE_ENABLE(f) \
+    CSRS_H_VS_AIA(f) \
+    CSRS_VS_SSTC(f) \
     CSRS_VS(f)
 
 #else // CONFIG_RVH
@@ -258,7 +341,12 @@
 #endif // CONFIG_RV_PMP_ENTRY_64
 
 /** Machine State Enable Registers **/
-#define CSRS_M_STATE_ENABLE(f)
+#ifdef CONFIG_RV_SMSTATEEN
+  #define CSRS_M_STATE_ENABLE(f) \
+    f(mstateen0, 0x30C)
+#else
+  #define CSRS_M_STATE_ENABLE(f)
+#endif // CONFIG_RV_SMSTATEEN
 
 /** Machine Non-Maskable Interrupt Handling **/
 #define CSRS_M_NON_MASKABLE_INTERRUPT_HANDLING(f)
@@ -292,29 +380,46 @@
   f(mhpmevent24    , 0x338) f(mhpmevent25    , 0x339) f(mhpmevent26    , 0x33A) f(mhpmevent27    , 0x33B) \
   f(mhpmevent28    , 0x33C) f(mhpmevent29    , 0x33D) f(mhpmevent30    , 0x33E) f(mhpmeven31     , 0x33F)
 
+#ifdef CONFIG_RV_CSR_MCOUNTINHIBIT
+  #define CSRS_M_MCOUNTINHIBIT(f) \
+  f(mcountinhibit  , 0x320)
+#else // CONFIG_RV_CSR_MCOUNTINHIBIT
+  #define CSRS_M_MCOUNTINHIBIT(f)
+#endif // CONFIG_RV_CSR_MCOUNTINHIBIT
+
 #define CSRS_M_COUNTER_SETUP(f) \
-  f(mcountinhibit  , 0x320) \
+  CSRS_M_MCOUNTINHIBIT(f) \
   CSRS_M_HPMEVENT(f)
   
 /** Debug/Trace Registers (Trigger Module Registers) **/
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
   #define CSRS_M_DEBUG_TRACE(f) \
     f(tselect    , 0x7A0) \
     f(tdata1     , 0x7A1) f(tdata2     , 0x7A2) f(tdata3     , 0x7A3) \
     f(tinfo      , 0x7A4) f(tcontrol   , 0x7A5) \
     f(mcontext   , 0x7A8)
-#else // CONFIG_RVSDTRIG
+#else // CONFIG_RV_SDTRIG
   #define CSRS_M_DEBUG_TRACE(f)
-#endif // CONFIG_RVSDTRIG
+#endif // CONFIG_RV_SDTRIG
 
 /** Debug Mode Registers (Core Debug Registers) **/
-#ifdef CONFIG_RVSDEXT
+#ifdef CONFIG_RV_SDEXT
   #define CSRS_DEBUG_MODE(f) \
     f(dcsr       , 0x7b0) f(dpc        , 0x7b1) \
     f(dscratch0  , 0x7b2) f(dscratch1  , 0x7b3)
-#else // CONFIG_RVSDEXT
+#else // CONFIG_RV_SDEXT
   #define CSRS_DEBUG_MODE(f)
-#endif // CONFIG_RVSDEXT
+#endif // CONFIG_RV_SDEXT
+
+/** Machine AIA Registers **/
+#ifdef CONFIG_RV_IMSIC
+  #define CSRS_M_AIA(f) \
+  f(mvien      , 0x308) f(mvip       , 0x309) \
+  f(miselect   , 0x350) f(mireg      , 0x351) \
+  f(mtopei     , 0x35C) f(mtopi      , 0xFB0)
+#else
+  #define CSRS_M_AIA(f)
+#endif // CONFIG_RV_IMSIC
 
 /** ALL **/
 #define CSRS_M(f) \
@@ -328,6 +433,7 @@
   CSRS_M_COUNTER_TIMERS(f) \
   CSRS_M_COUNTER_SETUP(f) \
   CSRS_M_DEBUG_TRACE(f) \
+  CSRS_M_AIA(f) \
   CSRS_DEBUG_MODE(f)
 
 
@@ -384,47 +490,74 @@ CSR_STRUCT_START(mhartid)
 CSR_STRUCT_END(mhartid)
 
 CSR_STRUCT_START(mstatus)
-  uint64_t uie : 1;
-  uint64_t sie : 1;
-  uint64_t pad0: 1;
-  uint64_t mie : 1;
-  uint64_t upie: 1;
-  uint64_t spie: 1;
-  uint64_t pad1: 1;
-  uint64_t mpie: 1;
-  uint64_t spp : 1;
-  uint64_t vs  : 2;
-  uint64_t mpp : 2;
-  uint64_t fs  : 2;
-  uint64_t xs  : 2;
-  uint64_t mprv: 1;
-  uint64_t sum : 1;
-  uint64_t mxr : 1;
-  uint64_t tvm : 1;
-  uint64_t tw  : 1;
-  uint64_t tsr : 1;
-  uint64_t pad3: 9;
-  uint64_t uxl : 2;
-  uint64_t sxl : 2;
-  uint64_t sbe : 1;
-  uint64_t mbe : 1;
+  uint64_t pad0: 1; // [0]
+  uint64_t sie : 1; // [1]
+  uint64_t pad1: 1; // [2]
+  uint64_t mie : 1; // [3]
+  uint64_t pad2: 1; // [4]
+  uint64_t spie: 1; // [5]
+  uint64_t ube : 1; // [6]
+  uint64_t mpie: 1; // [7]
+  uint64_t spp : 1; // [8]
+  uint64_t vs  : 2; // [10:9]
+  uint64_t mpp : 2; // [12:11]
+  uint64_t fs  : 2; // [14:13]
+  uint64_t xs  : 2; // [16:15]
+  uint64_t mprv: 1; // [17]
+  uint64_t sum : 1; // [18]
+  uint64_t mxr : 1; // [19]
+  uint64_t tvm : 1; // [20]
+  uint64_t tw  : 1; // [21]
+  uint64_t tsr : 1; // [22]
+  uint64_t pad3: 9; // [31:23]
+  uint64_t uxl : 2; // [33:32]
+  uint64_t sxl : 2; // [35:34]
+  uint64_t sbe : 1; // [36]
+  uint64_t mbe : 1; // [37]
 #ifdef CONFIG_RVH
-  uint64_t gva : 1;
-  uint64_t mpv : 1;
-  uint64_t pad4:23;
+  uint64_t gva : 1; // [38]
+  uint64_t mpv : 1; // [39]
+  uint64_t pad4:23; // [62:40]
 #else
-  uint64_t pad4:25;
+  uint64_t pad4:25; // [62:38]
 #endif
-  uint64_t sd  : 1;
+  uint64_t sd  : 1; // [63]
 CSR_STRUCT_END(mstatus)
 
-CSR_STRUCT_START(mtvec)
-CSR_STRUCT_END(mtvec)
+typedef enum ExtContextStatus {
+  EXT_CONTEXT_DISABLED = 0,
+  EXT_CONTEXT_INITIAL,
+  EXT_CONTEXT_CLEAN,
+  EXT_CONTEXT_DIRTY,
+} ExtContextStatus;
+
+CSR_STRUCT_START(tvec)
+  uint64_t mode  : 2;
+  uint64_t base  :62;
+CSR_STRUCT_END(tvec)
+
+typedef tvec_t mtvec_t;
 
 CSR_STRUCT_START(medeleg)
 CSR_STRUCT_END(medeleg)
 
 CSR_STRUCT_START(mideleg)
+  uint64_t usi  : 1;
+  uint64_t ssi  : 1;
+  uint64_t vssi : 1;
+  uint64_t msi  : 1;
+  uint64_t uti  : 1;
+  uint64_t sti  : 1;
+  uint64_t vsti : 1;
+  uint64_t mti  : 1;
+  uint64_t uei  : 1;
+  uint64_t sei  : 1;
+  uint64_t vsei : 1;
+  uint64_t mei  : 1;
+  uint64_t sgei : 1;
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofi : 1;
+#endif
 CSR_STRUCT_END(mideleg)
 
 CSR_STRUCT_START(mip)
@@ -457,6 +590,9 @@ CSR_STRUCT_START(mie)
   uint64_t vseie: 1;
   uint64_t meie : 1;
   uint64_t sgeie: 1;
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofie : 1;
+#endif
 CSR_STRUCT_END(mie)
 
 CSR_STRUCT_START(mcycle)
@@ -471,8 +607,10 @@ CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMEVENT)
 CSR_STRUCT_START(mcounteren)
 CSR_STRUCT_END(mcounteren)
 
+#ifdef CONFIG_RV_CSR_MCOUNTINHIBIT
 CSR_STRUCT_START(mcountinhibit)
 CSR_STRUCT_END(mcountinhibit)
+#endif // CONFIG_RV_CSR_MCOUNTINHIBIT
 
 CSR_STRUCT_START(mscratch)
 CSR_STRUCT_END(mscratch)
@@ -492,7 +630,61 @@ CSR_STRUCT_START(mconfigptr)
 CSR_STRUCT_END(mconfigptr)
 
 CSR_STRUCT_START(menvcfg)
+  uint64_t fiom   : 1; // [0]
+  uint64_t pad0   : 3; // [3:1]
+  uint64_t cbie   : 2; // [5:4]
+  uint64_t cbcfe  : 1; // [6]
+  uint64_t cbze   : 1; // [7]
+  uint64_t pad1   : 24;// [31:8]
+  uint64_t pmm    : 2; // [33:32]
+  uint64_t pad3   : 26;// [59:34]
+  uint64_t cde    : 1; // [60]
+  uint64_t adue   : 1; // [61]
+  uint64_t pbmte  : 1; // [62]
+  uint64_t stce   : 1; // [63]
 CSR_STRUCT_END(menvcfg)
+
+
+#ifdef CONFIG_RV_SMSTATEEN
+  CSR_STRUCT_START(mstateen0)
+  uint64_t c      : 1; // [0]
+  uint64_t fcsr   : 1; // [1]
+  uint64_t jvt    : 1; // [2]
+  uint64_t pad0   :53; // [55:3]
+  uint64_t p1p13  : 1; // [56]
+  uint64_t context: 1; // [57]
+  uint64_t imsic  : 1; // [58]
+  uint64_t aia    : 1; // [59]
+  uint64_t csrind : 1; // [60]
+  uint64_t pad2   : 1; // [61]
+  uint64_t envcfg : 1; // [62]
+  uint64_t se0    : 1; // [63]
+  CSR_STRUCT_END(mstateen0)
+
+  CSR_STRUCT_START(sstateen0)
+  uint64_t c      : 1; // [0]
+  uint64_t fcsr   : 1; // [1]
+  uint64_t jvt    : 1; // [2]
+  uint64_t pad0   :29; // [31:3]
+  CSR_STRUCT_END(sstateen0)
+  
+#ifdef CONFIG_RVH
+  CSR_STRUCT_START(hstateen0)
+  uint64_t c      : 1; // [0]
+  uint64_t fcsr   : 1; // [1]
+  uint64_t jvt    : 1; // [2]
+  uint64_t pad0   :53; // [55:3]
+  uint64_t pad1   : 1; // [56]
+  uint64_t context: 1; // [57]
+  uint64_t imsic  : 1; // [58]
+  uint64_t aia    : 1; // [59]
+  uint64_t csrind : 1; // [60]
+  uint64_t pad2   : 1; // [61]
+  uint64_t envcfg : 1; // [62]
+  uint64_t se0    : 1; // [63]
+  CSR_STRUCT_END(hstateen0)
+#endif
+#endif
 
 /** "H" Hypervisor Extension CSRs **/
 
@@ -510,7 +702,7 @@ CSR_STRUCT_DUMMY_LIST(CSRS_M_MEMORY_PROTECTION)
 
 /** Debug Mode Registers (Core Debug Registers) **/
 
-#ifdef CONFIG_RVSDEXT
+#ifdef CONFIG_RV_SDEXT
 CSR_STRUCT_START(dcsr)
   uint64_t prv      : 2 ; // [1:0]
   uint64_t step     : 1 ; // [2]
@@ -539,11 +731,11 @@ CSR_STRUCT_END(dscratch0)
 
 CSR_STRUCT_START(dscratch1)
 CSR_STRUCT_END(dscratch1)
-#endif // CONFIG_RVSDEXT
+#endif // CONFIG_RV_SDEXT
 
 /** Debug/Trace Registers (Trigger Module Registers) **/
 
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
 CSR_STRUCT_START(scontext)  // 0x5a8
 CSR_STRUCT_END(scontext)
 
@@ -591,7 +783,47 @@ CSR_STRUCT_END(tcontrol)
 CSR_STRUCT_START(mcontext)  // 0x7a8
 CSR_STRUCT_END(mcontext)
 
-#endif // CONFIG_RVSDTRIG
+#endif // CONFIG_RV_SDTRIG
+
+#ifdef CONFIG_RV_IMSIC
+CSR_STRUCT_START(miselect)
+CSR_STRUCT_END(miselect)
+
+CSR_STRUCT_START(mireg)
+CSR_STRUCT_END(mireg)
+
+CSR_STRUCT_START(mtopei)
+  uint64_t iprio : 11; // [10: 0]
+  uint64_t pad   :  5; // [15:11]
+  uint64_t iid   : 11; // [26:16]
+CSR_STRUCT_END(mtopei)
+
+CSR_STRUCT_START(mtopi)
+  uint64_t iprio : 8;  // [ 7: 0]
+  uint64_t pad   : 8;  // [15: 8]
+  uint64_t iid   : 12; // [27:16]
+CSR_STRUCT_END(mtopi)
+
+CSR_STRUCT_START(mvien)
+  uint64_t pad0 : 1; // [0]
+  uint64_t ssie : 1; // [1]
+  uint64_t pad1 : 7; // [8:2]
+  uint64_t seie : 1; // [9]
+  uint64_t pad2 : 3; // [12:10]
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofie : 1; // [13]
+#endif
+CSR_STRUCT_END(mvien)
+
+CSR_STRUCT_START(mvip)
+  uint64_t pad0 : 1; // [0]
+  uint64_t ssip : 1; // [1]
+  uint64_t pad1 : 3; // [4:2]
+  uint64_t stip : 1; // [5]
+  uint64_t pad2 : 3; // [8:6]
+  uint64_t seip : 1; // [9]
+CSR_STRUCT_END(mvip)
+#endif // CONFIG_RV_IMSIC
 
 /* Supervisor-level CSR */
 
@@ -606,8 +838,7 @@ CSR_STRUCT_START(sstatus)
   uint64_t pad2: 4;
 CSR_STRUCT_END(sstatus)
 
-CSR_STRUCT_START(stvec)
-CSR_STRUCT_END(stvec)
+typedef tvec_t stvec_t;
 
 CSR_STRUCT_START(sip)
   uint64_t usip : 1;
@@ -630,7 +861,10 @@ CSR_STRUCT_START(sie)
   uint64_t pad1 : 2;
   uint64_t ueie : 1;
   uint64_t seie : 1;
-  uint64_t pad2 : 2;
+  uint64_t pad2 : 3;
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofie : 1;
+#endif
 CSR_STRUCT_END(sie)
 
 CSR_STRUCT_START(scounteren)
@@ -659,20 +893,49 @@ CSR_STRUCT_START(satp)
   uint64_t mode: 4;
 CSR_STRUCT_END(satp)
 
+#ifdef CONFIG_RV_SSCOFPMF
+CSR_STRUCT_START(scountovf)
+CSR_STRUCT_END(scountovf)
+#endif
+
 /** Supervisor Custom CSRs **/
 
 #ifdef CONFIG_RV_SVINVAL
 // NOTE: srcctl is a supervisor custom read/write csr
 // to fix xiangshan that:
 // rnctl: move elimination,
-// svinval: one vm extension
 CSR_STRUCT_START(srnctl)
   uint64_t rnctrl  : 1;
-  uint64_t svinval : 1;
   uint64_t reserve :63;
 CSR_STRUCT_END(srnctl)
 #endif
 
+/** Supervisor Timer Register**/
+#ifdef CONFIG_RV_SSTC
+CSR_STRUCT_START(stimecmp)
+CSR_STRUCT_END(stimecmp)
+#endif
+
+/** Supervisor Advanced Interrupt Architecture CSRs **/
+#ifdef CONFIG_RV_IMSIC
+CSR_STRUCT_START(siselect)
+CSR_STRUCT_END(siselect)
+  
+CSR_STRUCT_START(sireg)
+CSR_STRUCT_END(sireg)
+
+CSR_STRUCT_START(stopei)
+  uint64_t iid   : 11; // [10: 0]
+  uint64_t pad   :  5; // [15:11]
+  uint64_t iprio : 11; // [26:16]
+CSR_STRUCT_END(stopei)
+
+CSR_STRUCT_START(stopi)
+  uint64_t iprio : 8;  // [ 7: 0]
+  uint64_t pad   : 8;  // [15: 8]
+  uint64_t iid   : 12; // [27:16] 
+CSR_STRUCT_END(stopi)
+#endif // CONFIG_RV_IMSIC
 
 /* hypervisor and Virtual Supervisor CSR */
 
@@ -698,6 +961,22 @@ CSR_STRUCT_START(hedeleg)
 CSR_STRUCT_END(hedeleg)
 
 CSR_STRUCT_START(hideleg)
+  uint64_t usi  : 1;
+  uint64_t ssi  : 1;
+  uint64_t vssi : 1;
+  uint64_t msi  : 1;
+  uint64_t uti  : 1;
+  uint64_t sti  : 1;
+  uint64_t vsti : 1;
+  uint64_t mti  : 1;
+  uint64_t uei  : 1;
+  uint64_t sei  : 1;
+  uint64_t vsei : 1;
+  uint64_t mei  : 1;
+  uint64_t sgei : 1;
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofi : 1;
+#endif
 CSR_STRUCT_END(hideleg)
 
 CSR_STRUCT_START(hvip)
@@ -738,14 +1017,17 @@ CSR_STRUCT_START(hgeie)
 CSR_STRUCT_END(hgeie)
 
 CSR_STRUCT_START(henvcfg)
-  uint64_t fiom   : 1;
-  uint64_t pad0   : 3;
-  uint64_t cbie   : 2;
-  uint64_t cbcfe  : 1;
-  uint64_t cbze   : 1;
-  uint64_t pad1   :54;
-  uint64_t pbmte  : 1;
-  uint64_t vstce  : 1;
+  uint64_t fiom   : 1;  // [0]
+  uint64_t pad0   : 3;  // [3:1]
+  uint64_t cbie   : 2;  // [5:4]
+  uint64_t cbcfe  : 1;  // [6]
+  uint64_t cbze   : 1;  // [7]
+  uint64_t pad1   : 24; // [31:8]
+  uint64_t pmm    : 2;  // [33:32]
+  uint64_t pad2   : 27; // [60:34]
+  uint64_t adue   : 1;  // [61]
+  uint64_t pbmte  : 1;  // [62]
+  uint64_t stce   : 1;  // [63]
 CSR_STRUCT_END(henvcfg)
 
 CSR_STRUCT_START(hcounteren)
@@ -768,46 +1050,24 @@ CSR_STRUCT_START(hgatp)
 CSR_STRUCT_END(hgatp)
 
 CSR_STRUCT_START(vsstatus)
-  union{
-    struct{
-      uint64_t pad0: 1;
-      uint64_t sie : 1;
-      uint64_t pad1: 3;
-      uint64_t spie: 1;
-      uint64_t ube : 1;
-      uint64_t pad2: 1;
-      uint64_t spp : 1;
-      uint64_t vs  : 2;
-      uint64_t pad3: 2;
-      uint64_t fs  : 2;
-      uint64_t xs  : 2;
-      uint64_t pad4: 1;
-      uint64_t sum : 1;
-      uint64_t mxr : 1;
-      uint64_t pad5:11;
-      uint64_t sd  : 1;
-    }_32;
-    struct{
-      uint64_t pad0: 1;
-      uint64_t sie : 1;
-      uint64_t pad1: 3;
-      uint64_t spie: 1;
-      uint64_t ube : 1;
-      uint64_t pad2: 1;
-      uint64_t spp : 1;
-      uint64_t vs  : 2;
-      uint64_t pad3: 2;
-      uint64_t fs  : 2;
-      uint64_t xs  : 2;
-      uint64_t pad4: 1;
-      uint64_t sum : 1;
-      uint64_t mxr : 1;
-      uint64_t pad5:12;
-      uint64_t uxl : 2;
-      uint64_t pad6:29;
-      uint64_t sd  : 1;
-    }_64;
-  };
+  uint64_t pad0   : 1;
+  uint64_t sie    : 1;
+  uint64_t pad1   : 3;
+  uint64_t spie   : 1;
+  uint64_t ube    : 1;
+  uint64_t pad2   : 1;
+  uint64_t spp    : 1;
+  uint64_t vs     : 2;
+  uint64_t pad3   : 2;
+  uint64_t fs     : 2;
+  uint64_t xs     : 2;
+  uint64_t pad4   : 1;
+  uint64_t sum    : 1;
+  uint64_t mxr    : 1;
+  uint64_t pad5   :12;
+  uint64_t uxl    : 2;
+  uint64_t pad6   :29;
+  uint64_t sd     : 1;
 CSR_STRUCT_END(vsstatus)
 
 CSR_STRUCT_START(vsie)
@@ -817,12 +1077,13 @@ CSR_STRUCT_START(vsie)
   uint64_t stie : 1;
   uint64_t pad2 : 3;
   uint64_t seie : 1;
+  uint64_t pad3 : 3;
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofie : 1;
+#endif
 CSR_STRUCT_END(vsie)
 
-CSR_STRUCT_START(vstvec)
-  uint64_t mode  : 2;
-  uint64_t base  :62;
-CSR_STRUCT_END(vstvec)
+typedef tvec_t vstvec_t;
 
 CSR_STRUCT_START(vsscratch)
 CSR_STRUCT_END(vsscratch)
@@ -831,16 +1092,8 @@ CSR_STRUCT_START(vsepc)
 CSR_STRUCT_END(vsepc)
 
 CSR_STRUCT_START(vscause)
-  union{
-    struct{
-      uint64_t code:31;
-      uint64_t intr: 1;
-    }_32;
-    struct{
-      uint64_t code:63;
-      uint64_t intr: 1;
-    }_64;
-  };
+  uint64_t code :63;
+  uint64_t intr : 1;
 CSR_STRUCT_END(vscause)
 
 CSR_STRUCT_START(vstval)
@@ -855,22 +1108,63 @@ CSR_STRUCT_START(vsip)
   uint64_t seip : 1;
 CSR_STRUCT_END(vsip)
 
+/** Virtual Supervisor Timer Register **/
+#ifdef CONFIG_RV_SSTC
+CSR_STRUCT_START(vstimecmp)
+CSR_STRUCT_END(vstimecmp)
+#endif
+
 CSR_STRUCT_START(vsatp)
-  union{
-    struct{
-      uint64_t ppn  :22;
-      uint64_t asid : 9;
-      uint64_t mode : 1;
-    }_32;
-    struct{
-      uint64_t ppn  :44;
-      uint64_t asid :16;
-      uint64_t mode : 4;
-    }_64;
-  };
+  uint64_t ppn  :44;
+  uint64_t asid :16;
+  uint64_t mode : 4;
 CSR_STRUCT_END(vsatp)
 
-#endif //CONFIG_RVH
+#endif // CONFIG_RVH
+
+/** Hypervisor and VS AIA CSRs **/
+#ifdef CONFIG_RV_IMSIC
+CSR_STRUCT_START(hvien)
+  uint64_t pad    : 13;
+#ifdef CONFIG_RV_SSCOFPMF
+  uint64_t lcofie : 1;
+#endif
+CSR_STRUCT_END(hvien)
+
+CSR_STRUCT_START(hvictl)
+  uint64_t iprio  : 8;  // [7:0]
+  uint64_t ipriom : 1;  // [8]
+  uint64_t dpr    : 1;  // [9]
+  uint64_t pad0   : 6;  // [15:10]
+  uint64_t iid    : 12; // [27:16]
+  uint64_t pad1   : 2;  // [29:28]
+  uint64_t vti    : 1;  // [30]
+CSR_STRUCT_END(hvictl)
+
+CSR_STRUCT_START(hviprio1)
+CSR_STRUCT_END(hviprio1)
+
+CSR_STRUCT_START(hviprio2)
+CSR_STRUCT_END(hviprio2)
+
+CSR_STRUCT_START(vsiselect)
+CSR_STRUCT_END(vsiselect)
+
+CSR_STRUCT_START(vsireg)
+CSR_STRUCT_END(vsireg)
+
+CSR_STRUCT_START(vstopei)
+  uint64_t iid   : 11; // [10: 0]
+  uint64_t pad   :  5; // [15:11]
+  uint64_t iprio : 11; // [26:16]
+CSR_STRUCT_END(vstopei)
+
+CSR_STRUCT_START(vstopi)
+  uint64_t iprio : 8;  // [ 7: 0]
+  uint64_t pad   : 8;  // [15: 8]
+  uint64_t iid   : 12; // [27:16] 
+CSR_STRUCT_END(vstopi)
+#endif // CONFIG_RV_IMSIC
 
 /* Unprivileged CSR */
 
@@ -940,10 +1234,27 @@ CSR_STRUCT_START(vlenb)
 CSR_STRUCT_END(vlenb)
 
 rtlreg_t check_vsetvl(rtlreg_t vtype_req, rtlreg_t vl_req, int mode);
-rtlreg_t get_mask(int reg, int idx, uint64_t vsew, uint64_t vlmul);
+rtlreg_t get_mask(int reg, int idx);
 void set_mask(uint32_t reg, int idx, uint64_t mask, uint64_t vsew, uint64_t vlmul);
 
 #endif // CONFIG_RVV
+
+#ifdef CONFIG_RV_ZICNTR
+CSR_STRUCT_START(cycle)
+CSR_STRUCT_END(cycle)
+
+#ifdef CONFIG_RV_CSR_TIME
+CSR_STRUCT_START(csr_time)
+CSR_STRUCT_END(csr_time)
+#endif // CONFIG_RV_CSR_TIME
+
+CSR_STRUCT_START(instret)
+CSR_STRUCT_END(instret)
+#endif // CONFIG_RV_ZICNTR
+
+#ifdef CONFIG_RV_ZIHPM
+CSR_STRUCT_DUMMY_LIST(CSRS_UNPRIV_HPMCOUNTER)
+#endif // CONFIG_RV_ZIHPM
 
 
 /**
@@ -957,6 +1268,14 @@ MAP(CSRS, CSRS_DECL)
 /**
  * Useful Defines
 */
+
+/** Counters/Timers **/
+#define CSR_HPMCOUNTER_BASE     0xC03
+#define CSR_HPMCOUNTER_NUM      29
+#define CSR_MHPMCOUNTER_BASE    0xB03
+#define CSR_MHPMCOUNTER_NUM     29
+#define CSR_MHPMEVENT_BASE      0x323
+#define CSR_MHPMEVENT_NUM       29
 
 /** Machine Memory Protection (PMP) **/
 #define PMP_R     0x01
@@ -989,20 +1308,31 @@ MAP(CSRS, CSRS_DECL)
 #define IDXVLENB  0xc22
 
 /** CSR satp **/
+#define SATP_MODE_BARE 0
+#define SATP_MODE_Sv39 8
+#define SATP_MODE_Sv48 9
 #define SATP_ASID_LEN 16 // max is 16
 #define SATP_PADDR_LEN (CONFIG_PADDRBITS-12) // max is 44
 #define SATP_ASID_MAX_LEN 16
 #define SATP_PADDR_MAX_LEN 44
 
-#define SATP_MODE_MASK (8UL << (SATP_ASID_MAX_LEN + SATP_PADDR_MAX_LEN))
+#define SATP_MODE39_MASK (8UL << (SATP_ASID_MAX_LEN + SATP_PADDR_MAX_LEN))
+#define SATP_MODE48_MASK (9UL << (SATP_ASID_MAX_LEN + SATP_PADDR_MAX_LEN))
 #define SATP_ASID_MASK (((1L << SATP_ASID_LEN)-1) << SATP_PADDR_MAX_LEN)
 #define SATP_PADDR_MASK ((1L << SATP_PADDR_LEN)-1)
 
-#define SATP_MASK (SATP_MODE_MASK | SATP_ASID_MASK | SATP_PADDR_MASK)
+#ifdef CONFIG_RV_SV48
+#define SATP_MASK (SATP_MODE39_MASK | SATP_MODE48_MASK | SATP_ASID_MASK | SATP_PADDR_MASK)
+#else
+#define SATP_MASK (SATP_MODE39_MASK | SATP_ASID_MASK | SATP_PADDR_MASK)
+#endif // CONFIG_RV_SV48
 #define MASKED_SATP(x) (SATP_MASK & x)
 
 /** CSR hgatp **/
 #ifdef CONFIG_RVH
+#define HGATP_MODE_BARE   0
+#define HGATP_MODE_Sv39x4 8
+#define HGATP_MODE_Sv48x4 9
 #define HGATP_VMID_LEN 14 // max is 14
 #define HGATP_PADDR_LEN 44 // max is 44
 #define HGATP_VMID_MAX_LEN 16
@@ -1013,16 +1343,20 @@ MAP(CSRS, CSRS_DECL)
 #define HGATP_PADDR_MASK ((1L << HGATP_PADDR_MAX_LEN)-1)
 
 #define HGATP_MASK (HGATP_MODE_MASK | HGATP_VMID_MASK | HGATP_PADDR_MASK)
-#define MASKED_HGATP(x) (HGATP_MASK & x)
+#endif // CONFIG_RVH
+
+#ifdef CONFIG_RVH
+#define HGATP_Bare_GPADDR_LEN CONFIG_PADDRBITS
+#define HGATP_Sv39x4_GPADDR_LEN 41
+#define HGATP_Sv48x4_GPADDR_LEN 50
+#define VSATP_PPN_HGATP_BARE_MASK BITMASK(HGATP_Bare_GPADDR_LEN - PAGE_SHIFT)
+#define VSATP_PPN_HGATP_Sv39x4_MASK BITMASK(HGATP_Sv39x4_GPADDR_LEN - PAGE_SHIFT)
+#define VSATP_PPN_HGATP_Sv48x4_MASK BITMASK(HGATP_Sv48x4_GPADDR_LEN - PAGE_SHIFT)
 #endif // CONFIG_RVH
 
 /** RVH **/
 #ifdef CONFIG_RVH
   extern bool v; // virtualization mode
-  #define vsatp_mode ((hstatus->vsxl == 1)? vsatp->_32.mode : vsatp->_64.mode)
-  #define vsatp_asid ((hstatus->vsxl == 1)? vsatp->_32.asid : vsatp->_64.asid)
-  #define vsatp_ppn  ((hstatus->vsxl == 1)? vsatp->_32.ppn  : vsatp->_64.ppn)
-  #define _vsstatus_  ((hstatus->vsxl == 1)? vsstatus->_32  : vsstatus->_64)
 #endif // CONFIG_RVH
 
 /** SSTATUS **/
@@ -1031,6 +1365,14 @@ MAP(CSRS, CSRS_DECL)
 // SD, UXL, MXR, SUM, XS, FS, VS, SPP, UBE, SPIE, SIE
 #define SSTATUS_RMASK 0x80000003000de762UL
 
+/** AIA **/
+#ifdef CONFIG_RV_IMSIC
+  #define ISELECT_2F_MASK 0x2F
+  #define ISELECT_3F_MASK 0x3F
+  #define ISELECT_6F_MASK 0x6F
+  #define ISELECT_MAX_MASK 0xFF
+  #define VSISELECT_MAX_MASK 0x1FF
+#endif // CONFIG_RV_IMSIC
 
 /**
  * Function declaration
@@ -1038,6 +1380,9 @@ MAP(CSRS, CSRS_DECL)
 
 /** General **/
 void csr_prepare();
+
+word_t gen_status_sd(word_t status);
+
 word_t csrid_read(uint32_t csrid);
 
 /** PMP **/

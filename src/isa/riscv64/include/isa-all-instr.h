@@ -102,11 +102,12 @@
   f(vwadd) f(vwsub) f(vwsubu) f(vwaddu_w) f(vwadd_w) \
   f(vwsubu_w) f(vwsub_w) f(vwmulu) f(vwmulsu) \
   f(vwmul) f(vwmaccu) f(vwmacc) f(vwmaccsu) \
-  f(vwmaccus) f(vle) f(vlse) f(vlxe) \
+  f(vwmaccus) f(vle) f(vlse) f(vlxe) f(vleff) \
   f(vse) f(vlr) f(vlm) f(vsr) f(vsm) \
   f(vlr_mmu) f(vlm_mmu) f(vsr_mmu) f(vsm_mmu) \
   f(vsse) f(vsxe) f(vsetvl) f(vsetvli) f(vsetivli) \
-  f(vle_mmu) f(vlse_mmu) f(vlxe_mmu) f(vse_mmu) f(vsse_mmu) f(vsxe_mmu) \
+  f(vle_mmu) f(vlse_mmu) f(vlxe_mmu) f(vleff_mmu) \
+  f(vse_mmu) f(vsse_mmu) f(vsxe_mmu) \
   f(vslideup) f(vslidedown) f(vslide1up) f(vslide1down) f(vmvnr) \
   f(vzextvf8) f(vsextvf8) f(vzextvf4) f(vsextvf4) f(vzextvf2) f(vsextvf2) \
   f(vfadd) f(vfredusum) f(vfsub) f(vfredosum) f(vfmin) f(vfredmin) \
@@ -128,6 +129,13 @@
 #else // CONFIG_RVV
 #define VECTOR_INSTR_TERNARY(f)
 #endif // CONFIG_RVV
+
+#ifdef CONFIG_RV_CBO
+#define CBO_INSTR_TERNARY(f) \
+  f(cbo_zero) f(cbo_zero_mmu) f(cbo_inval) f(cbo_flush) f(cbo_clean)
+#else // CONFIG_RV_CBO
+#define CBO_INSTR_TERNARY(f)
+#endif // CONFIG_RV_CBO
 
 #ifdef CONFIG_RVB
 #define BITMANIP_INSTR_TERNARY(f) \
@@ -167,12 +175,59 @@
 #define CRYPTO_INSTR_BINARY(f)
 #endif // CONFIG_RVK
 
-#ifdef CONFIG_RVZICOND
+#ifdef CONFIG_RV_ZICOND
 #define ZICOND_INSTR_TERNARY(f) \
   f(czero_eqz) f(czero_nez)
-#else // CONFIG_RVZICOND
+#else // CONFIG_RV_ZICOND
 #define ZICOND_INSTR_TERNARY(f)
-#endif // CONFIG_RVZICOND
+#endif // CONFIG_RV_ZICOND
+
+#ifdef CONFIG_RV_ZFH_MIN
+#define ZFH_MIN_INSTR_BINARY(f) \
+  f(flh) f(fsh) \
+  f(fmv_x_h) f(fmv_h_x)  \
+  f(fcvt_s_h) f(fcvt_h_s) f(fcvt_d_h) f(fcvt_h_d) 
+#else //CONFIG_RV_ZFH_MIN
+#define ZFH_MIN_INSTR_BINARY(f)
+#endif //CONFIG_RV_ZFH_MIN
+
+#ifdef CONFIG_RV_ZFH
+#define ZFH_INSTR_BINARY(f) \
+  f(fsqrth) f(fsgnjh) f(fsgnjnh) f(fsgnjxh) \
+  f(feqh) f(flth) f(fleh) f(fclassh) \
+  f(fcvt_w_h) f(fcvt_wu_h) f(fcvt_h_w) f(fcvt_h_wu) \
+  f(fcvt_l_h) f(fcvt_lu_h) f(fcvt_h_l) f(fcvt_h_lu)
+#define ZFH_INSTR_TERNARY(f) \
+  f(faddh) f(fsubh) f(fmulh) f(fdivh) \
+  f(fminh) f(fmaxh) \
+  f(fmaddh) f(fmsubh) f(fnmsubh) f(fnmaddh)
+#else //CONFIG_RV_ZFH
+#define ZFH_INSTR_BINARY(f)
+#define ZFH_INSTR_TERNARY(f)
+#endif //CONFIG_RV_ZFH
+
+#ifdef CONFIG_RV_ZFA
+#define ZFA_INSTR_BINARY(f) \
+  f(fli_s) f(fli_d) \
+  f(fround_s) f(fround_d) f(froundnx_s) f(froundnx_d) \
+  f(fcvtmod_w_d)
+#define ZFA_INSTR_TERNARY(f) \
+  f(fminm_s) f(fminm_d) f(fmaxm_s) f(fmaxm_d) \
+  f(fleq_s) f(fleq_d) f(fltq_s) f(fltq_d)
+#else 
+#define ZFA_INSTR_BINARY(f)
+#define ZFA_INSTR_TERNARY(f)
+#endif // CONFIG_RV_ZFA
+
+#ifdef CONFIG_RV_ZFH_ZFA
+#define ZFH_ZFA_INSTR_BINARY(f) \
+  f(fli_h) f(fround_h) f(froundnx_h)
+#define ZFH_ZFA_INSTR_TERNARY(f) \
+  f(fminm_h) f(fmaxm_h) f(fleq_h) f(fltq_h)
+#else
+#define ZFH_ZFA_INSTR_BINARY(f)
+#define ZFH_ZFA_INSTR_TERNARY(f)
+#endif // CONFIG_RV_ZFH_ZFA
 
 #ifdef CONFIG_FPU_NONE
 #define FLOAT_INSTR_BINARY(f)
@@ -198,11 +253,69 @@
   f(fmadds) f(fmsubs) f(fnmsubs) f(fnmadds) f(fmaddd) f(fmsubd) f(fnmsubd) f(fnmaddd)
 #endif // CONFIG_FPU_NONE
 
+#ifdef CONFIG_RV_ZIMOP
+#define ZIMOP_INSTR_BINARY(f) \
+  f(mop_r_0) \
+  f(mop_r_1) \
+  f(mop_r_2) \
+  f(mop_r_3) \
+  f(mop_r_4) \
+  f(mop_r_5) \
+  f(mop_r_6) \
+  f(mop_r_7) \
+  f(mop_r_8) \
+  f(mop_r_9) \
+  f(mop_r_10) \
+  f(mop_r_11) \
+  f(mop_r_12) \
+  f(mop_r_13) \
+  f(mop_r_14) \
+  f(mop_r_15) \
+  f(mop_r_16) \
+  f(mop_r_17) \
+  f(mop_r_18) \
+  f(mop_r_19) \
+  f(mop_r_20) \
+  f(mop_r_21) \
+  f(mop_r_22) \
+  f(mop_r_23) \
+  f(mop_r_24) \
+  f(mop_r_25) \
+  f(mop_r_26) \
+  f(mop_r_27) \
+  f(mop_r_28) \
+  f(mop_r_29) \
+  f(mop_r_30) \
+  f(mop_r_31)
+
+#define ZIMOP_INSTR_TERNARY(f) \
+  f(mop_rr_0) \
+  f(mop_rr_1) \
+  f(mop_rr_2) \
+  f(mop_rr_3) \
+  f(mop_rr_4) \
+  f(mop_rr_5) \
+  f(mop_rr_6) \
+  f(mop_rr_7)
+
+#else
+#define ZIMOP_INSTR_BINARY(f)
+#define ZIMOP_INSTR_TERNARY(f)
+#endif // CONFIG_RV_ZIMOP
+
+#ifdef CONFIG_RV_ZCMOP
+#define ZCMOP_INSTR_NULLARY(f) \
+  f(c_mop)
+#else
+#define ZCMOP_INSTR_NULLARY(f)
+#endif
+
 #define INSTR_NULLARY(f) \
   f(inv) f(rt_inv) f(nemu_trap) \
   f(fence_i) f(fence) \
   SYS_INSTR_NULLARY(f) \
-  f(p_ret)
+  f(p_ret) \
+  ZCMOP_INSTR_NULLARY(f)
 
 #define INSTR_UNARY(f) \
   f(p_li_0) f(p_li_1)
@@ -218,7 +331,12 @@
   SYS_INSTR_BINARY(f) \
   f(ld_mmu) f(lw_mmu) f(lh_mmu) f(lb_mmu) f(lwu_mmu) f(lhu_mmu) f(lbu_mmu) \
   f(sd_mmu) f(sw_mmu) f(sh_mmu) f(sb_mmu) \
-  FLOAT_INSTR_BINARY(f)
+  FLOAT_INSTR_BINARY(f) \
+  ZIMOP_INSTR_BINARY(f) \
+  ZFH_MIN_INSTR_BINARY(f) \
+  ZFH_INSTR_BINARY(f) \
+  ZFA_INSTR_BINARY(f) \
+  ZFH_ZFA_INSTR_BINARY(f)
 
 #define INSTR_TERNARY(f) \
   f(add) f(sll) f(srl) f(slt) f(sltu) f(xor) f(or) f(sub) f(sra) f(and) \
@@ -233,12 +351,19 @@
   f(p_blez) f(p_bgez) f(p_bltz) f(p_bgtz) \
   f(p_inc) f(p_dec) \
   AMO_INSTR_TERNARY(f) \
-  SYS_INSTR_TERNARY(f) \
   FLOAT_INSTR_TERNARY(f) \
   BITMANIP_INSTR_TERNARY(f) \
   CRYPTO_INSTR_TERNARY(f) \
   ZICOND_INSTR_TERNARY(f) \
-  VECTOR_INSTR_TERNARY(f)
+  VECTOR_INSTR_TERNARY(f) \
+  CBO_INSTR_TERNARY(f) \
+  ZIMOP_INSTR_TERNARY(f) \
+  ZFH_INSTR_TERNARY(f) \
+  ZFA_INSTR_TERNARY(f) \
+  ZFH_ZFA_INSTR_TERNARY(f)
+
+#define INSTR_TERNARY_CSR(f) \
+  SYS_INSTR_TERNARY(f) 
 
 def_all_EXEC_ID();
 

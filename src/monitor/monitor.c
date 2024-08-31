@@ -20,6 +20,7 @@
 #include <memory/image_loader.h>
 #include <memory/paddr.h>
 #include <getopt.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -105,6 +106,7 @@ static inline int parse_args(int argc, char *argv[]) {
     {"manual-oneshot-cpt" , no_argument      , NULL, 11},
     {"manual-uniform-cpt" , no_argument      , NULL, 9},
     {"cpt-interval"       , required_argument, NULL, 5},
+    {"warmup-interval"    , required_argument, NULL, 14},
     {"cpt-mmode"          , no_argument      , NULL, 7},
     {"map-cpt"            , required_argument, NULL, 10},
     {"checkpoint-format"  , required_argument, NULL, 12},
@@ -240,6 +242,7 @@ static inline int parse_args(int argc, char *argv[]) {
         log_file = optarg;
         small_log = true;
         break;
+      case 14: sscanf(optarg, "%lu", &warmup_interval); break;
 
       default:
         printf("Usage: %s [OPTION...] IMAGE [args]\n\n", argv[0]);
@@ -261,6 +264,7 @@ static inline int parse_args(int argc, char *argv[]) {
         printf("\t-S,--simpoint-dir=SIMPOINT_DIR   simpoints dir\n");
         printf("\t-u,--uniform-cpt        uniformly take cpt with fixed interval\n");
         printf("\t--cpt-interval=INTERVAL cpt interval: the profiling period for simpoint; the checkpoint interval for uniform cpt\n");
+        printf("\t--warmup-interval=INTERVAL warmup interval: the warmup interval for SimPoint cpt\n");
         printf("\t--cpt-mmode             force to take cpt in mmode, which might not work.\n");
         printf("\t--manual-oneshot-cpt    Manually take one-shot cpt by send signal.\n");
         printf("\t--manual-uniform-cpt    Manually take uniform cpt by send signal.\n");
@@ -289,6 +293,10 @@ void init_monitor(int argc, char *argv[]) {
 #else
   parse_args(argc, argv);
 #endif
+
+  if (warmup_interval == 0) {
+    warmup_interval = checkpoint_interval;
+  }
 
   if (map_image_as_output_cpt) {
     assert(!mapped_cpt_file);
@@ -323,57 +331,33 @@ void init_monitor(int argc, char *argv[]) {
   /* Perform ISA dependent initialization. */
   init_isa();
 
-  // when there is a gcpt[restorer], we put bbl after gcpt[restorer]
-  uint64_t bbl_start = 0;
-  long img_size = 0; // how large we should copy for difftest
+  int64_t img_size = 0;
 
-  if (checkpoint_restoring) {
-    // When restoring cpt, gcpt restorer from cmdline is optional,
-    // because a gcpt already ships a restorer
-    assert(img_file != NULL);
+  assert(img_file);
+  uint64_t bbl_start = RESET_VECTOR;
+  if (restorer) {
+    bbl_start += CONFIG_BBL_OFFSET_WITH_CPT;
+  }
+  img_size = load_img(img_file, "image (checkpoint/bare metal app/bbl) form cmdline", bbl_start, 0);
 
-    img_size = MEMORY_SIZE;
-    bbl_start = MEMORY_SIZE; // bbl size should never be used, let it crash if used
+  if (restorer) {
+    FILE *restore_fp = fopen(restorer, "rb");
+    Assert(restore_fp, "Can not open '%s'", restorer);
 
-    if (map_image_as_output_cpt) {  // map_cpt is loaded in init_mem
-      Log("Restoring with memory image cpt");
-    } else {
-      load_img(img_file, "Gcpt file form cmdline", RESET_VECTOR, 0);
-    }
-    if (restorer) {
-      load_img(restorer, "Gcpt restorer form cmdline", RESET_VECTOR, 0xf00);
-    }
+    int restore_size = 0;
+    int restore_jmp_inst = 0;
 
-  } else if (checkpoint_state != NoCheckpoint) {
-    // boot: jump to restorer --> restorer jump to bbl
-    assert(img_file != NULL);
-    assert(restorer != NULL);
+    int ret = fread(&restore_jmp_inst, sizeof(int), 1, restore_fp);
+    assert(ret == 1);
+    assert(restore_jmp_inst != 0);
 
-    bbl_start = RESET_VECTOR + CONFIG_BBL_OFFSET_WITH_CPT;
+    ret = fread(&restore_size, sizeof(int), 1, restore_fp);
+    assert(ret == 1);
+    assert(restore_size != 0);
 
-    long restorer_size = load_img(restorer, "Gcpt restorer form cmdline", RESET_VECTOR, 0xf00);
-    long bbl_size = load_img(img_file, "image (bbl/bare metal app) from cmdline", bbl_start, 0);
-    img_size = restorer_size + bbl_size;
+    fclose(restore_fp);
 
-  } else if (profiling_state == SimpointProfiling) {
-    if (restorer != NULL) {
-      Log("You are providing a gcpt restorer when doing simpoing profiling, "
-          "If you didn't link the program correctly, this will corrupt your memory/program.");
-      bbl_start = RESET_VECTOR + CONFIG_BBL_OFFSET_WITH_CPT;
-      long restorer_size = load_img(restorer, "Gcpt restorer form cmdline", RESET_VECTOR, 0xf00);
-      long bbl_size = load_img(img_file, "image (bbl/bare metal app) from cmdline", bbl_start, 0);
-      img_size = restorer_size + bbl_size;
-    }
-
-  } else {
-    if (restorer != NULL) {
-      Log("You are providing a gcpt restorer without specify ``restoring cpt'' or ``taking cpt''! ");
-      Log("If you don't know what you are doing, this will corrupt your memory/program.");
-      Log("If you want to take cpt or restore cpt, you must EXPLICITLY add corresponding options");
-      panic("Providing cpt restorer without restoring cpt or taking cpt\n");
-    }
-    bbl_start = RESET_VECTOR;
-    img_size = load_img(img_file, "image (bbl/bare metal app) from cmdline", bbl_start, 0);
+    load_img(restorer, "Gcpt restorer form cmdline", RESET_VECTOR, restore_size);
   }
 
   /* Initialize differential testing. */

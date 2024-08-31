@@ -43,11 +43,11 @@ void ramcmp() {
 #endif //CONFIG_RVH
 
 void csr_prepare() {
-  cpu.mstatus = mstatus->val;
+  cpu.mstatus = gen_status_sd(mstatus->val) | mstatus->val;
   cpu.mcause  = mcause->val;
   cpu.mepc    = mepc->val;
 
-  cpu.sstatus = mstatus->val & SSTATUS_RMASK; // sstatus
+  cpu.sstatus = gen_status_sd(mstatus->val) | (mstatus->val & SSTATUS_RMASK); // sstatus
   cpu.scause  = scause->val;
   cpu.sepc    = sepc->val;
 
@@ -81,7 +81,7 @@ void csr_prepare() {
   cpu.htval   = htval->val;
   cpu.htinst  = htinst->val;
   cpu.hgatp   = hgatp->val;
-  cpu.vsstatus= vsstatus->val;
+  cpu.vsstatus= gen_status_sd(vsstatus->val) | vsstatus->val;
   cpu.vstvec  = vstvec->val;
   cpu.vsepc   = vsepc->val;
   cpu.vscause = vscause->val;
@@ -89,10 +89,22 @@ void csr_prepare() {
   cpu.vsatp   = vsatp->val;
   cpu.vsscratch = vsscratch->val;
 #endif
+#ifdef CONFIG_RV_SDTRIG
+  cpu.tselect  = tselect->val;
+  cpu.tdata1   = tdata1->val;
+  cpu.tinfo    = tinfo->val;
+  cpu.tcontrol = tcontrol->val;
+#endif // CONFIG_RV_SDTRIG
+#ifndef CONFIG_FPU_NONE
+  cpu.fcsr     = fcsr->val;
+#endif // CONFIG_FPU_NONE
 }
 
 void csr_writeback() {
   mstatus->val = cpu.mstatus;
+  // Keep the value of mstatus->sd always zero
+  // The value used to diff with REF/DUT will set mstatus->sd with fs or vs is dirty.
+  mstatus->sd  = 0;
   mcause ->val = cpu.mcause ;
   mepc   ->val = cpu.mepc   ;
   //sstatus->val = cpu.sstatus;  // sstatus is a shadow of mstatus
@@ -130,6 +142,9 @@ void csr_writeback() {
   htinst->val  = cpu.htinst;
   hgatp->val   = cpu.hgatp;
   vsstatus->val= cpu.vsstatus;
+  // Keep the value of vsstatus->sd always zero
+  // The value used to diff with REF/DUT will set vsstatus->sd with fs or vs is dirty.
+  vsstatus->sd = 0;
   vstvec->val  = cpu.vstvec;
   vsepc->val   = cpu.vsepc;
   vscause->val = cpu.vscause;
@@ -137,6 +152,15 @@ void csr_writeback() {
   vsatp->val   = cpu.vsatp;
   vsscratch->val = cpu.vsscratch;
 #endif
+#ifdef CONFIG_RV_SDTRIG
+  tselect->val  = cpu.tselect;
+  tdata1->val   = cpu.tdata1;
+  tinfo->val    = cpu.tinfo;
+  tcontrol->val = cpu.tcontrol;
+#endif // CONFIG_RV_SDTRIG
+#ifndef CONFIG_FPU_NONE
+  fcsr->val     = cpu.fcsr;
+#endif // CONFIG_FPU_NONE
 }
 #ifdef CONFIG_LIGHTQS
 extern uint64_t stable_log_begin, spec_log_begin;

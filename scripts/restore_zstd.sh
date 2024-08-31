@@ -13,8 +13,8 @@
 # See the Mulan PSL v2 for more details.
 #**************************************************************************************/
 
-cpt=`find output_top/test/linux/10000000 -name "*.zstd"`
+cpt=`find output_top/test/linux/50000000 -name "*.zstd"`
 ./build/riscv64-nemu-interpreter -b\
-    -r resource/gcpt_restore/build/gcpt.bin \
-    --restore -I 99000000\
+    --diff ${SPIKE_SO}\
+    --restore -I 100000000 \
     $cpt

@@ -80,6 +80,15 @@ enum {
   FPCALL_F32ToF64,
   FPCALL_F64ToF32,
 
+  FPCALL_F16ToF32,
+  FPCALL_F32ToF16,
+
+  FPCALL_F16ToF64,
+  FPCALL_F64ToF16,
+
+  FPCALL_FROUND,
+  FPCALL_FROUNDNX,
+
   FPCALL_NEED_RM,  // separator
 
   FPCALL_UADD,
@@ -92,6 +101,13 @@ enum {
   FPCALL_GE,
   FPCALL_NE,
   FPCALL_GT,
+
+  FPCALL_FLI,
+  FPCALL_MAXM,
+  FPCALL_MINM,
+  FPCALL_FCVTMOD,
+  FPCALL_FLEQ,
+  FPCALL_FLTQ,
 
   FPCALL_SGNJ,
   FPCALL_SGNJN,
@@ -119,7 +135,12 @@ enum {
   FPCALL_DUToF,
   FPCALL_DSToF,
   FPCALL_DFToF,
+
   FPCALL_DFToF_ODD,    // round odd
+
+  FPCALL_VP_NEED_RM,  // separator
+
+  FPCALL_GenNegZero,
 };
 
 #define FPCALL_CMD(op, w) (((op) << 16) | (w))

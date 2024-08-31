@@ -1,5 +1,5 @@
 /***************************************************************************************
-* Copyright (c) 2020-2022 Institute of Computing Technology, Chinese Academy of Sciences
+* Copyright (c) 2020-2024 Institute of Computing Technology, Chinese Academy of Sciences
 *
 * NEMU is licensed under Mulan PSL v2.
 * You can use this software according to the terms and conditions of the Mulan PSL v2.
@@ -13,23 +13,15 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-#ifndef __RESTORE_ROM_ADDR__
-#define __RESTORE_ROM_ADDR__
-
-#define CPT_MAGIC_BUMBER    0xbeef
-#define BOOT_CODE           0x80000000
-#define BOOT_FLAGS          0x80000f00
-#define INT_REG_CPT_ADDR    0x80001000
-#define FLOAT_REG_CPT_ADDR  0x80001100
-#define PC_CPT_ADDR         0x80001200
-#define CSR_CPT_ADDR        0x80001300
-
-#ifndef RESET_VECTOR
-    #define RESET_VECTOR        0x800a0000
-#endif
-
-#define CLINT_MMIO 0x38000000
-#define CLINT_MTIMECMP 0x4000
-#define CLINT_MTIME 0xBFF8
-
-#endif //__RESTORE_ROM_ADDR__
+def_THelper(cbo) {
+  int mmu_mode = isa_mmu_state();
+  if (mmu_mode == MMU_DIRECT) {
+    def_INSTR_TAB("0000000 00100 ????? ??? ????? ????? ??", cbo_zero);
+  } else if (mmu_mode == MMU_TRANSLATE) {
+    def_INSTR_TAB("0000000 00100 ????? ??? ????? ????? ??", cbo_zero_mmu);
+  } else { assert(0); }
+  def_INSTR_TAB(  "0000000 00000 ????? ??? ????? ????? ??", cbo_inval);
+  def_INSTR_TAB(  "0000000 00010 ????? ??? ????? ????? ??", cbo_flush);
+  def_INSTR_TAB(  "0000000 00001 ????? ??? ????? ????? ??", cbo_clean);
+  return EXEC_ID_inv;
+}

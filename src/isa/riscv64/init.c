@@ -29,14 +29,16 @@ static const uint32_t img [] = {
 #endif
 
 void init_csr();
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
 void init_trigger();
-#endif
+#endif // CONFIG_RV_SDTRIG
 
 #if !defined(CONFIG_SHARE) || defined(CONFIG_LIGHTQS)
 void init_clint();
 #endif
 void init_device();
+
+#define CSR_ZERO_INIT(name, addr) name->val = 0;
 
 void init_isa() {
   // NEMU has some cached states and some static variables in the source code.
@@ -63,6 +65,9 @@ void init_isa() {
   // For RV64 systems, if S-mode is not supported, then SXL is hardwired to zero.
   // For RV64 systems, if U-mode is not supported, then UXL is hardwired to zero.
   mstatus->val = 0xaUL << 32;
+  // initialize the value fs and vs to 0
+  mstatus->fs = 0;
+  mstatus->vs = 0;
 
 #ifdef CONFIG_RV_PMP_ENTRY_16
   pmpcfg0->val = 0;
@@ -79,10 +84,6 @@ void init_isa() {
   pmpcfg14->val = 0;
 #endif // CONFIG_RV_PMP_ENTRY_64
 
-#ifdef CONFIG_RV_SVINVAL
-  srnctl->val = 3; // enable extension 'svinval' [1]
-#endif
-
 #define ext(e) (1 << ((e) - 'a'))
   misa->extensions = ext('i') | ext('m') | ext('a') | ext('c') | ext('s') | ext('u');
 #ifndef CONFIG_FPU_NONE
@@ -93,18 +94,55 @@ void init_isa() {
   hstatus->vsxl = 2; // equal to max len (spike)
   vsstatus->val = mstatus->val & SSTATUS_RMASK;
   mideleg->val |= ((1 << 12) | (1 << 10) | (1 << 6) | (1 << 2));
-#endif
+#endif // CONFIG_RVH
+#ifdef CONFIG_RVB
+  misa->extensions |= ext('b');
+#endif // CONFIG_RVB
+#ifdef CONFIG_RV_IMSIC
+  miselect->val = 0;
+  siselect->val = 0;
+  vsiselect->val = 0;
+  mireg->val = 0;
+  sireg->val = 0;
+  vsireg->val = 0;
+  mtopi->val = 0;
+  stopi->val = 0;
+  vstopi->val = 0;
+  mvien->val = 0;
+  mvip->val = 0;
+  hvien->val = 0;
+  hvictl->val = 0;
+  hviprio1->val = 0;
+  hviprio2->val = 0;
+  mtopei->val = 0;
+  stopei->val = 0;
+  vstopei->val = 0;
+#endif // CONFIG_RV_IMSIC
 
   misa->mxl = 2; // XLEN = 64
 
 #ifdef CONFIG_RVV
   // vector
-  mstatus->val |= 0x1UL << 9; // set mstatus.vs to initial.
   misa->extensions |= ext('v');
   vl->val = 0;
   vtype->val = (uint64_t) 1 << 63; // actually should be 1 << 63 (set vill bit to forbidd)
   vlenb->val = VLEN/8;
 #endif // CONFIG_RVV
+
+  // mcycle and minstret record :
+  // - the difference between the absolute number and the write value, when the bit of mcountinhibit is clear;
+  // - the inhibited number, when the bit of mcountinhibit is set.
+  mcycle->val = 0;
+  minstret->val = 0;
+
+#ifdef CONFIG_RV_CSR_MCOUNTINHIBIT
+  mcountinhibit->val = 0; 
+#endif // CONFIG_RV_CSR_MCOUNTINHIBIT
+
+  // All hpm counters are read-only zero in NEMU
+  MAP(CSRS_UNPRIV_HPMCOUNTER, CSR_ZERO_INIT);
+  MAP(CSRS_M_HPMCOUNTER, CSR_ZERO_INIT);
+  MAP(CSRS_M_HPMEVENT, CSR_ZERO_INIT);
 
 #ifdef CONFIG_USE_XS_ARCH_CSRS
   mvendorid->val = 0;
@@ -116,9 +154,18 @@ void init_isa() {
   mimpid->val = CONFIG_MIMPID_VALUE;
 #endif // CONFIG_USE_XS_ARCH_CSRS
 
-#ifdef CONFIG_RVSDTRIG
+#ifdef CONFIG_RV_SDTRIG
   init_trigger();
-#endif // CONFIG_RVSDTRIG
+#endif // CONFIG_RV_SDTRIG
+
+#define MSTATEEN0_RESET  0xdc00000000000001ULL
+#define HSTATEEN0_RESET  0xdc00000000000001ULL
+#define SSTATEEN0_RESET  0x0000000000000001ULL
+#ifdef CONFIG_RV_SMSTATEEN
+  mstateen0->val = MSTATEEN0_RESET;
+  hstateen0->val = HSTATEEN0_RESET;
+  sstateen0->val = SSTATEEN0_RESET;
+#endif // CONFIG_RV_SMSTATEEN
 
 #ifndef CONFIG_SHARE
   extern char *cpt_file;

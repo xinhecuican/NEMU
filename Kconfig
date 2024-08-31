@@ -112,6 +112,10 @@ config CC_OPT
   default "-O3" if CC_O3
   default "none"
 
+config CC_NATIVE_ARCH
+  bool "Enable march=native"
+  default n
+
 config CC_LTO
   bool "Enable link-time optimization"
   default y
@@ -231,7 +235,7 @@ endif
 
 choice
   prompt "FPU Emulation"
-  default FPU_HOST
+  default FPU_SOFT
 config FPU_HOST
   bool "Use host floating point operation"
 config FPU_SOFT
@@ -242,7 +246,7 @@ endchoice
 
 choice
   prompt "Detecting misaligned memory accessing"
-  default AC_HOST
+  default AC_SOFT
 config AC_HOST
   bool "By host CPU (x86 host only)"
 config AC_SOFT

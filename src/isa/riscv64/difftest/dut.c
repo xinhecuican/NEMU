@@ -81,6 +81,10 @@ bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
     check_reg(vlenb     );
     #endif // CONFIG_RVV
 
+    #ifndef CONFIG_FPU_NONE
+    check_reg(fcsr      );
+    #endif // CONFIG_FPU_NONE
+
     #ifdef CONFIG_RVH
     check_reg(v);//virtualization mode
     check_reg(mtval2    );
@@ -100,6 +104,12 @@ bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
     check_reg(vsatp     );
     check_reg(vsscratch );
     #endif // CONFIG_RVH
+    #ifdef CONFIG_RV_SDTRIG
+    check_reg(tselect );
+    check_reg(tdata1  );
+    check_reg(tinfo   );
+    check_reg(tcontrol);
+    #endif // CONFIG_RV_SDTRIG
     return false;
   }
 #ifdef CONFIG_DIFFTEST_STORE_COMMIT

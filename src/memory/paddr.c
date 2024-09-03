@@ -209,7 +209,9 @@ bool check_paddr(paddr_t addr, int len, int type, int mode, vaddr_t vaddr) {
 
 word_t paddr_read(paddr_t addr, int len, int type, int mode, vaddr_t vaddr) {
 
-
+#ifdef CONFIG_SIM32
+  addr = addr & 0xffffffff;
+#endif
   assert(type == MEM_TYPE_READ || type == MEM_TYPE_IFETCH_READ || type == MEM_TYPE_IFETCH || type == MEM_TYPE_WRITE_READ);
   if (!check_paddr(addr, len, type, mode, vaddr)) {
     return 0;

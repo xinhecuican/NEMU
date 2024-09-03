@@ -350,7 +350,11 @@ static inline word_t get_mcycle() {
       return mcycle->val;
     }
   #endif // CONFIG_RV_CSR_MCOUNTINHIBIT_CNTR
-  return mcycle->val + get_abs_instr_count();
+  #ifdef CONFIG_DISABLE_COUNTER
+    return 0;
+  #else
+    return mcycle->val + get_abs_instr_count();
+  #endif
 }
 
 static inline word_t get_minstret() {
@@ -359,7 +363,11 @@ static inline word_t get_minstret() {
       return minstret->val;
     }
   #endif // CONFIG_RV_CSR_MCOUNTINHIBIT_CNTR
-  return minstret->val + get_abs_instr_count();
+  #ifdef CONFIG_DISABLE_COUNTER
+    return 0;
+  #else
+    return minstret->val + get_abs_instr_count();
+  #endif
 }
 
 static inline word_t set_mcycle(word_t src) {

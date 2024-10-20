@@ -122,8 +122,11 @@ static void serial_io_handler(uint32_t offset, int len, bool is_write) {
   switch (offset) {
     /* We bind the serial port with the host stderr in NEMU. */
     case CH_OFFSET:
-      if (is_write) putc(serial_base[0], stderr);
-      else serial_base[0] = MUXDEF(CONFIG_SERIAL_INPUT_FIFO, serial_dequeue(), 0xff);
+      if (is_write) {
+	  #ifndef CONFIG_SHARE
+          putc(serial_base[UARTLITE_TX_FIFO], stderr);
+          #endif // CONFIG_SHARE
+      } else serial_base[0] = MUXDEF(CONFIG_SERIAL_INPUT_FIFO, serial_dequeue(), 0xff);
       break;
     case LSR_OFFSET:
       if (!is_write)
@@ -133,9 +136,10 @@ static void serial_io_handler(uint32_t offset, int len, bool is_write) {
 }
 
 void init_serial() {
-  printf("init_serial\n");
   serial_base = new_space(8);
+#ifndef CONFIG_SHARE
   add_pio_map ("serial", CONFIG_SERIAL_PORT, serial_base, 8, serial_io_handler);
+#endif
   add_mmio_map("serial", CONFIG_SERIAL_MMIO, serial_base, 8, serial_io_handler);
 
 #ifdef CONFIG_SERIAL_INPUT_FIFO

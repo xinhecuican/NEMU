@@ -21,7 +21,23 @@
 #include <cpu/cpu.h>
 #include "../local-include/csr.h"
 #include "../local-include/intr.h"
-
+#ifdef CONFIG_SIM32
+typedef union PageTableEntry {
+  struct {
+    uint32_t v   : 1;
+    uint32_t r   : 1;
+    uint32_t w   : 1;
+    uint32_t x   : 1;
+    uint32_t u   : 1;
+    uint32_t g   : 1;
+    uint32_t a   : 1;
+    uint32_t d   : 1;
+    uint32_t rsw : 2;
+    uint32_t ppn :22;
+  };
+  uint32_t val;
+} PTE;
+#else
 typedef union PageTableEntry {
   struct {
     uint32_t v   : 1;
@@ -40,18 +56,30 @@ typedef union PageTableEntry {
   };
   uint64_t val;
 } PTE;
+#endif
 
 #define PGSHFT 12
 #define PGMASK ((1ull << PGSHFT) - 1)
 #define PGBASE(pn) (pn << PGSHFT)
 
 // Sv39 & Sv48 page walk
+#ifdef CONFIG_SIM32
+#define PTE_SIZE 4
+#define VPNMASK 0x3ff
+#else
 #define PTE_SIZE 8
 #define VPNMASK 0x1ff
+#endif
 #define GPVPNMASK 0x7ff
+#ifdef CONFIG_SIM32
+static inline uintptr_t VPNiSHFT(int i) {
+  return (PGSHFT) + 10 * i;
+}
+#else
 static inline uintptr_t VPNiSHFT(int i) {
   return (PGSHFT) + 9 * i;
 }
+#endif
 static inline uintptr_t VPNi(vaddr_t va, int i) {
   return (va >> VPNiSHFT(i)) & VPNMASK;
 }
@@ -92,7 +120,11 @@ static inline bool check_permission(PTE *pte, bool ok, vaddr_t vaddr, int type) 
 #else
     bool update_ad = false;
 #endif
+#ifdef CONFIG_SIM32
+    if (!(ok && pte->x) || update_ad) {
+#else
     if (!(ok && pte->x && !pte->pad) || update_ad) {
+#endif
       assert(!cpu.amo);
       IFDEF(CONFIG_USE_XS_ARCH_CSRS, vaddr = INTR_TVAL_SV48_SEXT(vaddr));
       INTR_TVAL_REG(EX_IPF) = vaddr;
@@ -117,7 +149,11 @@ static inline bool check_permission(PTE *pte, bool ok, vaddr_t vaddr, int type) 
 #else
     bool update_ad = false;
 #endif
+#ifdef CONFIG_SIM32
+    if (!(ok && can_load) || update_ad) {
+#else
     if (!(ok && can_load && !pte->pad) || update_ad) {
+#endif
       if (cpu.amo) Logtr("redirect to AMO page fault exception at pc = " FMT_WORD, cpu.pc);
       int ex = (cpu.amo ? EX_SPF : EX_LPF);
       IFDEF(CONFIG_USE_XS_ARCH_CSRS, vaddr = INTR_TVAL_SV48_SEXT(vaddr));
@@ -135,7 +171,11 @@ static inline bool check_permission(PTE *pte, bool ok, vaddr_t vaddr, int type) 
     bool update_ad = false;
 #endif
     Logtr("Translate for memory writing v: %d w: %d", pte->v, pte->w);
+#ifdef CONFIG_SIM32
+    if (!(ok && pte->w) || update_ad) {
+#else 
     if (!(ok && pte->w && !pte->pad) || update_ad) {
+#endif
       IFDEF(CONFIG_USE_XS_ARCH_CSRS, vaddr = INTR_TVAL_SV48_SEXT(vaddr));
       INTR_TVAL_REG(EX_SPF) = vaddr;
       cpu.amo = false;
@@ -292,9 +332,18 @@ static word_t pte_read(paddr_t addr, int type, int mode, vaddr_t vaddr) {
 
 static paddr_t ptw(vaddr_t vaddr, int type) {
   Logtr("Page walking for 0x%lx", vaddr);
+#ifdef CONFIG_SIM32
+  uint32_t ppn = satp->val & 0x3fffff;
+  word_t pg_base = PGBASE(ppn);
+#else
   word_t pg_base = PGBASE(satp->ppn);
+#endif
   int max_level;
+#ifdef CONFIG_SIM32
+  max_level = 2;
+#else
   max_level = satp->mode == 8 ? 3 : 4;
+#endif
 #ifdef CONFIG_RVH
   int virt = cpu.v;
   int mode = cpu.mode;
@@ -325,6 +374,10 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
     int64_t vaddr39 = vaddr << (64 - 39);
     vaddr39 >>= (64 - 39);
     if ((uint64_t)vaddr39 != vaddr) goto bad;
+  } else if (max_level == 2) {
+    int64_t vaddr32 = vaddr << (64 - 32);
+    vaddr32 >>= (64 - 32);
+    if((uint64_t)vaddr32 != vaddr) goto bad;
   }
   for (level = max_level - 1; level >= 0;) {
     p_pte = pg_base + VPNi(vaddr, level) * PTE_SIZE;
@@ -340,24 +393,39 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
 #endif
 #ifdef CONFIG_SHARE
     if (unlikely(dynamic_config.debug_difftest)) {
+#ifdef CONFIG_SIM32
+      fprintf(stderr, "[NEMU] ptw: level %d, vaddr 0x%lx, pg_base 0x%lx, p_pte 0x%lx, pte.val 0x%x\n",
+#else
       fprintf(stderr, "[NEMU] ptw: level %d, vaddr 0x%lx, pg_base 0x%lx, p_pte 0x%lx, pte.val 0x%lx\n",
+#endif
         level, vaddr, pg_base, p_pte, pte.val);
     }
 #endif
     pg_base = PGBASE((uint64_t)pte.ppn);
+#ifdef CONFIG_SIM32
+    if (!pte.v || (!pte.r && pte.w)) {
+#else
     if (!pte.v || (!pte.r && pte.w) || pte.pad) {
+#endif
       goto bad;
-    } else if (ISNDEF(CONFIG_RV_SVPBMT) && pte.pbmt) {
+    }
+#ifndef CONFIG_SIM32
+    else if (ISNDEF(CONFIG_RV_SVPBMT) && pte.pbmt) {
       goto bad;
     } else if (pte.pbmt == 3) {
       goto bad;
     } else if (ISNDEF(CONFIG_RV_SVNAPOT) && pte.n) {
       goto bad;
     }
+#endif
     if (pte.r || pte.x) { // is leaf
       break;
     } else { // not leaf
+#ifdef CONFIG_SIM32
+      if (pte.a || pte.d || pte.u) {
+#else
       if (pte.a || pte.d || pte.u || pte.pbmt || pte.n) {
+#endif
         goto bad; 
       }
       level --;
@@ -504,8 +572,8 @@ static inline int update_mmu_state_internal(bool ifetch) {
     assert(satp->mode == 0 || satp->mode == 8 || satp->mode == 9);
     if (satp->mode == 8 || satp->mode == 9) return MMU_TRANSLATE;
 #else
-    assert(satp->mode == 0 || satp->mode == 8);
-    if (satp->mode == 8) return MMU_TRANSLATE;
+    assert(satp->mode == 0 || satp->mode == 8 || (satp->val & 0x80000000));
+    if (satp->mode == 8 || (satp->val & 0x80000000)) return MMU_TRANSLATE;
 #endif // CONFIG_RV_SV48
   }
   return MMU_DIRECT;
@@ -539,9 +607,10 @@ int isa_mmu_check(vaddr_t vaddr, int len, int type) {
   bool enable_48 = satp->mode == 9 || (cpu.v && (vsatp->mode == 9 || hgatp->mode == 9));
   bool vm_enable = (mstatus->mprv && (!is_ifetch) ? mstatus->mpp : cpu.mode) < MODE_M && (enable_39 || enable_48);
 #else
+  bool enable_32 = (satp->val & 0x80000000);
   bool enable_39 = satp->mode == 8;
   bool enable_48 = satp->mode == 9;
-  bool vm_enable = (mstatus->mprv && (!is_ifetch) ? mstatus->mpp : cpu.mode) < MODE_M && (enable_39 || enable_48);
+  bool vm_enable = (mstatus->mprv && (!is_ifetch) ? mstatus->mpp : cpu.mode) < MODE_M && (enable_39 || enable_48 || enable_32);
 #endif
 
   bool va_msbs_ok = true;
@@ -554,6 +623,7 @@ int isa_mmu_check(vaddr_t vaddr, int len, int type) {
       word_t va_mask = ((((word_t)1) << (63 - 38 + 1)) - 1);
       word_t va_msbs = vaddr >> 38;
       va_msbs_ok = (va_msbs == va_mask) || va_msbs == 0;
+    } else if (enable_32) {
     } else {
       Assert(0, "Invalid satp mode %d", satp->mode);
     }

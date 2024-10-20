@@ -12,9 +12,8 @@ config HAS_PORT_IO
   default y
 
 menuconfig HAS_SERIAL
-  depends on !SHARE
   bool "Enable serial"
-  default y
+  default n
 
 if HAS_SERIAL
 config SERIAL_PORT

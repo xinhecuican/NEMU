@@ -84,11 +84,13 @@ void init_isa() {
   pmpcfg14->val = 0;
 #endif // CONFIG_RV_PMP_ENTRY_64
 
+#ifndef CONFIG_SIM32
 #define ext(e) (1 << ((e) - 'a'))
   misa->extensions = ext('i') | ext('m') | ext('a') | ext('c') | ext('s') | ext('u');
 #ifndef CONFIG_FPU_NONE
   misa->extensions |= ext('d') | ext('f');
 #endif // CONFIG_FPU_NONE
+#endif
 #ifdef CONFIG_RVH
   misa->extensions |= ext('h');
   hstatus->vsxl = 2; // equal to max len (spike)
@@ -119,7 +121,13 @@ void init_isa() {
   vstopei->val = 0;
 #endif // CONFIG_RV_IMSIC
 
+#ifndef CONFIG_SIM32
   misa->mxl = 2; // XLEN = 64
+#endif
+
+#ifdef CONFIG_SIM32
+  misa->val = 0x40000080;
+#endif
 
 #ifdef CONFIG_RVV
   // vector

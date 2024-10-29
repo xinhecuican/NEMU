@@ -27,8 +27,12 @@ static inline rtlreg_t unboxf16(rtlreg_t r) {
 }
 
 static inline rtlreg_t unboxf32(rtlreg_t r) {
+#ifdef CONFIG_SIM32
+  return r & ~BOX_MASK_FP32;
+#else
   return MUXDEF(CONFIG_FPU_SOFT, (r & BOX_MASK_FP32) == BOX_MASK_FP32, true)
     ? (r & ~BOX_MASK_FP32) : defaultNaNF32UI;
+#endif
 }
 
 static inline float16_t rtlToF16(rtlreg_t r) {

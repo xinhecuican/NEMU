@@ -36,11 +36,15 @@ static inline def_rtl(hfbox, rtlreg_t *dest, rtlreg_t *src) {
 }
 
 static inline def_rtl(funbox, rtlreg_t *dest, rtlreg_t *src) {
+#ifdef CONFIG_SIM32
+  rtl_andi(s, dest, src, ~FBOX_MASK);
+#else
   if((*src & FBOX_MASK) == FBOX_MASK){
       rtl_andi(s, dest, src, ~FBOX_MASK);
   } else {
       *dest = defaultNaNF32UI;
   }
+#endif
 }
 
 static inline def_rtl(fsr, rtlreg_t *fdest, rtlreg_t *src, int width) {

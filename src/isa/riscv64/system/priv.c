@@ -341,7 +341,11 @@ inline word_t gen_status_sd(word_t status) {
   mstatus_t xstatus = (mstatus_t)status;
   bool fs_dirty = xstatus.fs == EXT_CONTEXT_DIRTY;
   bool vs_dirty = xstatus.vs == EXT_CONTEXT_DIRTY;
+#ifdef CONFIG_SIM32
+  return ((uint64_t)(fs_dirty || vs_dirty)) << 31;
+#else
   return ((word_t)(fs_dirty || vs_dirty)) << 63;
+#endif
 }
 
 static inline word_t get_mcycle() {

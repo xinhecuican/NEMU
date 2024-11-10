@@ -221,6 +221,17 @@ void isa_difftest_csrcpy(void *dut, bool direction) {
     memcpy(dut, csr_array, 4096 * sizeof(rtlreg_t));
   }
 }
+
+void isa_difftest_mpfcpy(void *dut, bool direction) {
+  if (direction == DIFFTEST_TO_REF) {
+    memcpy(&dut_cpu, dut, 32 * sizeof(uint64_t));
+  } else {
+    uint64_t* data = (uint64_t*)dut;
+    data[0] = mcycle->val;
+    data[1] = mcycle->val;
+  }
+}
+
 #ifdef CONFIG_LIGHTQS
 void isa_difftest_uarchstatus_cpy(void *dut, bool direction, uint64_t restore_count) {
   uint64_t left_exec = lightqs_restore_reg_snapshot(restore_count);

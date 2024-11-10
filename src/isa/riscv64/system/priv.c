@@ -355,7 +355,7 @@ static inline word_t get_mcycle() {
     }
   #endif // CONFIG_RV_CSR_MCOUNTINHIBIT_CNTR
   #ifdef CONFIG_DISABLE_COUNTER
-    return 0;
+    return mcycle->val;
   #else
     return mcycle->val + get_abs_instr_count();
   #endif
@@ -368,7 +368,7 @@ static inline word_t get_minstret() {
     }
   #endif // CONFIG_RV_CSR_MCOUNTINHIBIT_CNTR
   #ifdef CONFIG_DISABLE_COUNTER
-    return 0;
+    return minstret->val;
   #else
     return minstret->val + get_abs_instr_count();
   #endif
@@ -572,6 +572,7 @@ static inline void set_vsie(word_t src) {
 
 static inline void update_counter_mcountinhibit(word_t old, word_t new) {
   #ifdef CONFIG_RV_CSR_MCOUNTINHIBIT_CNTR
+  #ifndef CONFIG_DISABLE_COUNTER
     bool old_cy = old & 0x1;
     bool old_ir = old & 0x4;
     bool new_cy = new & 0x1;
@@ -589,10 +590,11 @@ static inline void update_counter_mcountinhibit(word_t old, word_t new) {
     if (!old_ir && new_ir) { // IR: 0 -> 1
       minstret->val = minstret->val + get_abs_instr_count();
     }
+  #endif
   #endif // CONFIG_RV_CSR_MCOUNTINHIBIT_CNTR
 }
 
-static inline word_t csr_read(word_t *src) {
+static inline word_t csr_read(word_t *src, uint32_t rd) {
 #ifdef CONFIG_RV_PMP_CSR
   if (is_pmpaddr(src)) {
     int idx = (src - &csr_array[CSR_PMPADDR_BASE]);
@@ -685,20 +687,20 @@ if (is_read(vsie))           { return get_vsie(); }
 #endif // CONFIG_FPU_NONE
   else if (is_read(mcycle)) {
     // NEMU emulates a hart with CPI = 1.
-    difftest_skip_ref();
-    return get_mcycle();
+    // difftest_skip_ref();
+    return dut_cpu.gpr[rd]._64;
   }
   else if (is_read(minstret)) {
     // The number of retired instruction should be the same between dut and ref.
     // But instruction counter of NEMU is not accurate when enabling Performance optimization.
-    difftest_skip_ref();
-    return get_minstret();
+    // difftest_skip_ref();
+    return dut_cpu.gpr[rd]._64;
   }
 #ifdef CONFIG_RV_ZICNTR
   else if (is_read(cycle)) {
     // NEMU emulates a hart with CPI = 1.
-    difftest_skip_ref();
-    return get_mcycle();
+    // difftest_skip_ref();
+    return dut_cpu.gpr[rd]._64;
   }
   #ifdef CONFIG_RV_CSR_TIME
     else if (is_read(csr_time)) {
@@ -709,8 +711,8 @@ if (is_read(vsie))           { return get_vsie(); }
   else if (is_read(instret)) {
     // The number of retired instruction should be the same between dut and ref.
     // But instruction counter of NEMU is not accurate when enabling Performance optimization.
-    difftest_skip_ref();
-    return get_minstret();
+    // difftest_skip_ref();
+    return dut_cpu.gpr[rd]._64;
   }
 #endif // CONFIG_RV_ZICNTR
 #ifndef CONFIG_RVH
@@ -1130,7 +1132,7 @@ static inline void csr_write(word_t *dest, word_t src) {
 }
 
 word_t csrid_read(uint32_t csrid) {
-  return csr_read(csr_decode(csrid));
+  return csr_read(csr_decode(csrid), 0);
 }
 
 // VS/VU access stateen should be EX_II when mstateen0->se0 is false.
@@ -1278,20 +1280,20 @@ static void csrrw(rtlreg_t *dest, const rtlreg_t *src, uint32_t csrid, uint32_t 
     case FUNCT3_CSRRW:
     case FUNCT3_CSRRWI:
       if (rd) {
-        *dest = csr_read(csr);
+        *dest = csr_read(csr, rd);
       }
       csr_write(csr, *src);
       break;
     case FUNCT3_CSRRS:
     case FUNCT3_CSRRSI:
-      *dest = csr_read(csr);
+      *dest = csr_read(csr, rd);
       if (rs1) {
         csr_write(csr, *src | *dest);
       }
       break;
     case FUNCT3_CSRRC:
     case FUNCT3_CSRRCI:
-      *dest = csr_read(csr);
+      *dest = csr_read(csr, rd);
       if (rs1) {
         csr_write(csr, (~*src) & *dest);
       }

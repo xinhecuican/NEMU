@@ -121,6 +121,10 @@ void difftest_regcpy(void *dut, bool direction) {
 }
 #endif // CONFIG_LIGHTQS
 
+void difftest_mpfcpy(void *dut, bool direction) {
+  isa_difftest_mpfcpy(dut, direction);
+}
+
 #ifdef RV64_FULL_DIFF
 void difftest_csrcpy(void *dut, bool direction) {
   isa_difftest_csrcpy(dut, direction);

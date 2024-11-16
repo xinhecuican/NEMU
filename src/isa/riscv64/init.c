@@ -33,9 +33,7 @@ void init_csr();
 void init_trigger();
 #endif // CONFIG_RV_SDTRIG
 
-#if !defined(CONFIG_SHARE) || defined(CONFIG_LIGHTQS)
 void init_clint();
-#endif
 void init_device();
 
 #define CSR_ZERO_INIT(name, addr) name->val = 0;
@@ -187,9 +185,7 @@ void init_isa() {
   }
 #endif
 
-  #if defined(CONFIG_LIGHTQS) || !defined(CONFIG_SHARE)
   init_clint();
-  #endif
 
   if (!is_second_call) {
     IFDEF(CONFIG_SHARE, init_device());

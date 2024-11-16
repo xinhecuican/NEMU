@@ -53,6 +53,7 @@ void update_clint() {
   clint_base[CLINT_MTIME] = uptime / US_PERCYCLE;
 #endif
   mip->mtip = (clint_base[CLINT_MTIME] >= clint_base[CLINT_MTIMECMP]);
+  mip->msip = clint_base[0];
 }
 
 uint64_t clint_uptime() {
@@ -69,6 +70,7 @@ static void clint_io_handler(uint32_t offset, int len, bool is_write) {
 
 void init_clint() {
   clint_base = (uint64_t *)new_space(0x10000);
+  clint_base[CLINT_MTIMECMP] = 0xffffffffffffffff;
   add_mmio_map("clint", CONFIG_CLINT_MMIO, (uint8_t *)clint_base, 0x10000, clint_io_handler);
   IFNDEF(CONFIG_DETERMINISTIC, add_alarm_handle(update_clint));
   boot_time = get_time();

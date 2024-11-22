@@ -338,6 +338,14 @@
   ZFA_INSTR_BINARY(f) \
   ZFH_ZFA_INSTR_BINARY(f)
 
+#ifdef CONFIG_SIM32
+#define INSTR_ALIAS(f) \
+  f(c_jal)
+#else
+#define INSTR_ALIAS(f) \
+  f(c_addiw)
+#endif
+
 #define INSTR_TERNARY(f) \
   f(add) f(sll) f(srl) f(slt) f(sltu) f(xor) f(or) f(sub) f(sra) f(and) \
   f(addi) f(slli) f(srli) f(slti) f(sltui) f(xori) f(ori) f(srai) f(andi) \
@@ -346,10 +354,11 @@
   f(jalr) f(beq) f(bne) f(blt) f(bge) f(bltu) f(bgeu) \
   f(mul) f(mulh) f(mulhu) f(mulhsu) f(div) f(divu) f(rem) f(remu) \
   f(mulw) f(divw) f(divuw) f(remw) f(remuw) \
-  f(c_li) f(c_addi) f(c_slli) f(c_srli) f(c_srai) f(c_andi) f(c_addiw) \
+  f(c_li) f(c_addi) f(c_slli) f(c_srli) f(c_srai) f(c_andi) \
   f(c_add) f(c_and) f(c_or) f(c_xor) f(c_sub) f(c_addw) f(c_subw) \
   f(p_blez) f(p_bgez) f(p_bltz) f(p_bgtz) \
   f(p_inc) f(p_dec) \
+  INSTR_ALIAS(f) \
   AMO_INSTR_TERNARY(f) \
   FLOAT_INSTR_TERNARY(f) \
   BITMANIP_INSTR_TERNARY(f) \

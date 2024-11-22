@@ -42,6 +42,21 @@ def_EHelper(c_j) {
   rtl_j(s, id_src1->imm);
 }
 
+#ifdef CONFIG_SIM32
+def_EHelper(c_jal) {
+  rtl_li(s, &cpu.gpr[1]._64, s->snpc);
+  // printf("%lx,%lx.%d,%d,%lx\n", br_count, cpu.pc, 1, 1, id_src1->imm);
+#ifdef CONFIG_BR_LOG
+  br_log[br_count].pc = s->pc; // cpu.pc - 4;
+  br_log[br_count].target = id_src1->imm;
+  br_log[br_count].taken = 1;
+  br_log[br_count].type = 1;
+  br_count++;
+#endif // CONFIG_BR_LOG
+  rtl_j(s, id_src1->imm);
+}
+#endif
+
 def_EHelper(c_jr) {
 #ifdef CONFIG_SHARE
   // See rvi/control.h:26. JALR should set the LSB to 0.
@@ -95,9 +110,11 @@ def_EHelper(c_addi) {
   rtl_addi(s, ddest, ddest, id_src2->imm);
 }
 
+#ifndef CONFIG_SIM32
 def_EHelper(c_addiw) {
   rtl_addiw(s, ddest, ddest, id_src2->imm);
 }
+#endif
 
 def_EHelper(c_slli) {
   rtl_shli(s, ddest, ddest, id_src2->imm);

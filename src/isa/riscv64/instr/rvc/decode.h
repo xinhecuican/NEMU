@@ -135,10 +135,15 @@ static inline void decode_C_LxSP(Decode *s, int rotate, bool is_fp) {
 static inline def_DHelper(C_LWSP) {
   decode_C_LxSP(s, 2, false);
 }
-
+#ifdef CONFIG_SIM32
+static inline def_DHelper(C_FLWSP) {
+  decode_C_LxSP(s, 2, true);
+}
+#else
 static inline def_DHelper(C_LDSP) {
   decode_C_LxSP(s, 3, false);
 }
+#endif
 
 static inline def_DHelper(C_FLDSP) {
   decode_C_LxSP(s, 3, true);
@@ -163,10 +168,15 @@ static inline void decode_C_SxSP(Decode *s, int rotate, bool is_fp) {
 static inline def_DHelper(C_SWSP) {
   decode_C_SxSP(s, 2, false);
 }
-
+#ifdef CONFIG_SIM32
+static inline def_DHelper(C_FSWSP) {
+  decode_C_SxSP(s, 2, true);
+}
+#else
 static inline def_DHelper(C_SDSP) {
   decode_C_SxSP(s, 3, false);
 }
+#endif
 
 static inline def_DHelper(C_FSDSP) {
   decode_C_SxSP(s, 3, true);
@@ -207,9 +217,16 @@ static inline def_DHelper(C_LW) {
   decode_C_ldst_common(s, 1, false, false);
 }
 
+
+#ifdef CONFIG_SIM32
+static inline def_DHelper(C_FLW) {
+  decode_C_ldst_common(s, 1, false, true);
+}
+#else
 static inline def_DHelper(C_LD) {
   decode_C_ldst_common(s, 2, false, false);
 }
+#endif
 
 static inline def_DHelper(C_FLD) {
   decode_C_ldst_common(s, 2, false, true);
@@ -221,9 +238,15 @@ static inline def_DHelper(C_SW) {
   decode_C_ldst_common(s, 1, true, false);
 }
 
+#ifdef CONFIG_SIM32
+static inline def_DHelper(C_FSW) {
+  decode_C_ldst_common(s, 1, true, true);
+}
+#else
 static inline def_DHelper(C_SD) {
   decode_C_ldst_common(s, 2, true, false);
 }
+#endif
 
 static inline def_DHelper(C_FSD) {
   decode_C_ldst_common(s, 2, true, true);
@@ -320,6 +343,25 @@ def_THelper(c_addi_dispatch) {
   return table_c_addi(s);
 }
 
+#ifdef CONFIG_SIM32
+static inline def_DHelper(C_JAL) {
+  uint32_t instr = s->isa.instr.val;
+  sword_t simm11 = SEXT(BITS(instr, 12, 12), 1);
+  uint32_t imm10  = BITS(instr, 8, 8);
+  uint32_t imm9_8 = BITS(instr, 10, 9);
+  uint32_t imm7   = BITS(instr, 6, 6);
+  uint32_t imm6   = BITS(instr, 7, 7);
+  uint32_t imm5   = BITS(instr, 2, 2);
+  uint32_t imm4   = BITS(instr, 11, 11);
+  uint32_t imm3_1 = BITS(instr, 5, 3);
+
+  sword_t offset = (simm11 << 11) | (imm10 << 10) | (imm9_8 << 8) |
+    (imm7 << 7) | (imm6 << 6) | (imm5 << 5) | (imm4 << 4) | (imm3_1 << 1);
+  decode_op_i(s, id_src1, s->pc + offset, true);
+  decode_op_i(s, id_src2, 0, true);
+  decode_op_r(s, id_dest, 1, false);
+}
+#else
 def_THelper(c_addiw_dispatch) {
 #ifdef CONFIG_SHARE
   // C.ADDIW is only valid when rd != x0; the code points with rd=x0 are reserved.
@@ -331,6 +373,7 @@ def_THelper(c_addiw_dispatch) {
 #endif // CONFIG_SHARE
   return table_c_addiw(s);
 }
+#endif
 
 def_THelper(c_ldst) {
   int mmu_mode = isa_mmu_state();
@@ -361,6 +404,22 @@ def_THelper(c_fldst) {
 #endif // CONFIG_FPU_NONE
   return EXEC_ID_inv;
 }
+
+#ifdef CONFIG_SIM32
+def_THelper(c_flwst) {
+#ifndef CONFIG_FPU_NONE
+  int mmu_mode = isa_mmu_state();
+  if (mmu_mode == MMU_DIRECT) {
+    def_INSTR_TAB("011 ??? ??? ?? ??? ??", flw);
+    def_INSTR_TAB("111 ??? ??? ?? ??? ??", fsw);
+  } else if (mmu_mode == MMU_TRANSLATE) {
+    def_INSTR_TAB("011 ??? ??? ?? ??? ??", flw_mmu);
+    def_INSTR_TAB("111 ??? ??? ?? ??? ??", fsw_mmu);
+  } else assert(0);
+#endif
+  return EXEC_ID_inv;
+}
+#endif
 
 def_THelper(c_li_dispatch) {
   def_INSTR_TAB("??? 0 ????? 00000 ??", p_li_0);
@@ -437,20 +496,34 @@ def_THelper(rvc_Q0) {
   def_INSTR_IDTAB("000 ???????? ??? ??", C_ADDI4SPN, addi);
 #ifndef CONFIG_FPU_NONE
   def_INSTR_IDTAB("001 ??? ??? ?? ??? ??", C_FLD, c_fldst);
+#ifdef CONFIG_SIM32
+  def_INSTR_IDTAB("011 ??? ??? ?? ??? ??", C_FLW, c_flwst);
+#endif
 #endif // CONFIG_FPU_NONE
   def_INSTR_IDTAB("010 ??? ??? ?? ??? ??", C_LW , c_ldst);
+#ifndef CONFIG_SIM32
   def_INSTR_IDTAB("011 ??? ??? ?? ??? ??", C_LD , c_ldst);
+#endif
 #ifndef CONFIG_FPU_NONE
   def_INSTR_IDTAB("101 ??? ??? ?? ??? ??", C_FSD, c_fldst);
+#ifdef CONFIG_SIM32
+  def_INSTR_IDTAB("111 ??? ??? ?? ??? ??", C_FSW, c_flwst);
+#endif
 #endif // CONFIG_FPU_NONE
   def_INSTR_IDTAB("110 ??? ??? ?? ??? ??", C_SW , c_ldst);
+#ifndef CONFIG_SIM32
   def_INSTR_IDTAB("111 ??? ??? ?? ??? ??", C_SD , c_ldst);
+#endif
   return EXEC_ID_inv;
 }
 
 def_THelper(rvc_Q1) {
   def_INSTR_IDTAB("000 ? ????? ????? ??", CI_simm, c_addi_dispatch);
+#ifdef CONFIG_SIM32
+  def_INSTR_IDTAB("001 ? ????? ????? ??", C_JAL, c_jal);
+#else
   def_INSTR_IDTAB("001 ? ????? ????? ??", CI_simm, c_addiw_dispatch);
+#endif
   def_INSTR_IDTAB("010 ? ????? ????? ??", C_LI   , c_li_dispatch);
   def_INSTR_TAB  ("011 ? ????? ????? ??",          rvc_Q1_lui_addi16sp);
   def_INSTR_TAB  ("100 ? ????? ????? ??",          rvc_Q1_compute);
@@ -464,15 +537,25 @@ def_THelper(rvc_Q2) {
   def_INSTR_IDTAB("000 ? ????? ????? ??", CI_uimm, c_slli);
 #ifndef CONFIG_FPU_NONE
   def_INSTR_IDTAB("001 ? ????? ????? ??", C_FLDSP, c_fldst);
+#ifdef CONFIG_SIM32
+  def_INSTR_IDTAB("011 ? ????? ????? ??", C_FLWSP, c_flwst);
+#endif
 #endif // CONFIG_FPU_NONE
   def_INSTR_IDTAB("010 ? ????? ????? ??", C_LWSP , c_ldst);
+#ifndef CONFIG_SIM32
   def_INSTR_IDTAB("011 ? ????? ????? ??", C_LDSP , c_ldst);
+#endif
   def_INSTR_TAB  ("100 ? ????? ????? ??",          rvc_Q2_misc);
 #ifndef CONFIG_FPU_NONE
   def_INSTR_IDTAB("101 ? ????? ????? ??", C_FSDSP, c_fldst);
+#ifdef CONFIG_SIM32
+  def_INSTR_IDTAB("111 ? ????? ????? ??", C_FSWSP, c_flwst);
+#endif
 #endif // CONFIG_FPU_NONE
   def_INSTR_IDTAB("110 ? ????? ????? ??", C_SWSP , c_ldst);
+#ifndef CONFIG_SIM32
   def_INSTR_IDTAB("111 ? ????? ????? ??", C_SDSP , c_ldst);
+#endif
   return EXEC_ID_inv;
 }
 

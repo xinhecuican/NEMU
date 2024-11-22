@@ -137,6 +137,9 @@ int isa_fetch_decode(Decode *s) {
   s->type = INSTR_TYPE_N;
   switch (idx) {
     case EXEC_ID_c_j: case EXEC_ID_p_jal: case EXEC_ID_jal:
+#ifdef CONFIG_SIM32
+    case EXEC_ID_c_jal:
+#endif
       s->jnpc = id_src1->imm; s->type = INSTR_TYPE_J; break;
 
     case EXEC_ID_beq: case EXEC_ID_bne: case EXEC_ID_blt: case EXEC_ID_bge:

@@ -572,8 +572,7 @@ static inline int update_mmu_state_internal(bool ifetch) {
     assert(satp->mode == 0 || satp->mode == 8 || satp->mode == 9);
     if (satp->mode == 8 || satp->mode == 9) return MMU_TRANSLATE;
 #elif CONFIG_SIM32
-    assert(satp->mode == 0 || satp->mode == 1);
-    if (satp->mode == 1) return MMU_TRANSLATE;
+    if ((satp->val & 0x80000000)) return MMU_TRANSLATE;
 #else
     assert(satp->mode == 0 || satp->mode == 8);
     if (satp->mode == 8) return MMU_TRANSLATE;
@@ -610,7 +609,7 @@ int isa_mmu_check(vaddr_t vaddr, int len, int type) {
   bool enable_48 = satp->mode == 9 || (cpu.v && (vsatp->mode == 9 || hgatp->mode == 9));
   bool vm_enable = (mstatus->mprv && (!is_ifetch) ? mstatus->mpp : cpu.mode) < MODE_M && (enable_39 || enable_48);
 #else
-  bool enable_32 = satp->mode == 1;
+  bool enable_32 = (satp->val & 0x80000000);
   bool enable_39 = satp->mode == 8;
   bool enable_48 = satp->mode == 9;
   bool vm_enable = (mstatus->mprv && (!is_ifetch) ? mstatus->mpp : cpu.mode) < MODE_M && (enable_39 || enable_48 || enable_32);

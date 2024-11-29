@@ -284,10 +284,17 @@
   f(mhartid    , 0xF14) f(mconfigptr , 0xF15)
 
 /** Machine Trap Setup **/
+#ifdef CONFIG_SIM32
 #define CSRS_M_TRAP_SETUP(f) \
   f(mstatus    , 0x300) f(misa       , 0x301) f(medeleg    , 0x302) \
   f(mideleg    , 0x303) f(mie        , 0x304) f(mtvec      , 0x305) \
-  f(mcounteren , 0x306) \
+  f(mcounteren , 0x306) f(mstatush   , 0x310) f(medelegh   , 0x312)
+#else
+#define CSRS_M_TRAP_SETUP(f) \
+  f(mstatus    , 0x300) f(misa       , 0x301) f(medeleg    , 0x302) \
+  f(mideleg    , 0x303) f(mie        , 0x304) f(mtvec      , 0x305) \
+  f(mcounteren , 0x306)
+#endif
 
 /** Machine Trap Handling **/
 #ifdef CONFIG_RVH
@@ -303,20 +310,34 @@
   CSRS_M_GUEST_TRAP_HANDLING(f)
 
 /** Machine Configuration **/
+#ifdef CONFIG_SIM32
+#define CSRS_M_CONFIGURATION(f) \
+  f(menvcfg    , 0x30A) f(menvcfgh, 0x31A)
+#else
 #define CSRS_M_CONFIGURATION(f) \
   f(menvcfg    , 0x30A)
+#endif
 
 /** Machine Memory Protection (PMP) **/
 #ifdef CONFIG_RV_PMP_ENTRY_0
   #define CSRS_M_MEMORY_PROTECTION(f)
 #endif // CONFIG_RV_PMP_ENTRY_0
 #ifdef CONFIG_RV_PMP_ENTRY_16
+#ifdef CONFIG_SIM32
+  #define CSRS_M_MEMORY_PROTECTION(f) \
+    f(pmpcfg0    , 0x3A0) f(pmpcfg1    , 0x3A1) f(pmpcfg2    , 0x3A2) f(pmpcfg3    , 0x3A3)\
+    f(pmpaddr0   , 0x3B0) f(pmpaddr1   , 0x3B1) f(pmpaddr2   , 0x3B2) f(pmpaddr3   , 0x3B3) \
+    f(pmpaddr4   , 0x3B4) f(pmpaddr5   , 0x3B5) f(pmpaddr6   , 0x3B6) f(pmpaddr7   , 0x3B7) \
+    f(pmpaddr8   , 0x3B8) f(pmpaddr9   , 0x3B9) f(pmpaddr10  , 0x3BA) f(pmpaddr11  , 0x3BB) \
+    f(pmpaddr12  , 0x3BC) f(pmpaddr13  , 0x3BD) f(pmpaddr14  , 0x3BE) f(pmpaddr15  , 0x3BF)
+#else
   #define CSRS_M_MEMORY_PROTECTION(f) \
     f(pmpcfg0    , 0x3A0) f(pmpcfg2    , 0x3A2) \
     f(pmpaddr0   , 0x3B0) f(pmpaddr1   , 0x3B1) f(pmpaddr2   , 0x3B2) f(pmpaddr3   , 0x3B3) \
     f(pmpaddr4   , 0x3B4) f(pmpaddr5   , 0x3B5) f(pmpaddr6   , 0x3B6) f(pmpaddr7   , 0x3B7) \
     f(pmpaddr8   , 0x3B8) f(pmpaddr9   , 0x3B9) f(pmpaddr10  , 0x3BA) f(pmpaddr11  , 0x3BB) \
     f(pmpaddr12  , 0x3BC) f(pmpaddr13  , 0x3BD) f(pmpaddr14  , 0x3BE) f(pmpaddr15  , 0x3BF)
+#endif
 #endif // CONFIG_RV_PMP_ENTRY_16
 #ifdef CONFIG_RV_PMP_ENTRY_64
   #define CSRS_M_MEMORY_PROTECTION(f) \
@@ -355,6 +376,9 @@
 #define CSRS_M_CNTR(f) \
   f(mcycle     , 0xB00) f(minstret   , 0xB02)
 
+#define CSRS_M_CNTRH(f) \
+  f(mcycleh     , 0xB80) f(minstreth   , 0xB82)
+
 #define CSRS_M_HPMCOUNTER(f) \
   f(mhpmcounter3   , 0xB03) \
   f(mhpmcounter4   , 0xB04) f(mhpmcounter5   , 0xB05) f(mhpmcounter6   , 0xB06) f(mhpmcounter7   , 0xB07) \
@@ -365,10 +389,27 @@
   f(mhpmcounter24  , 0xB18) f(mhpmcounter25  , 0xB19) f(mhpmcounter26  , 0xB1A) f(mhpmcounter27  , 0xB1B) \
   f(mhpmcounter28  , 0xB1C) f(mhpmcounter29  , 0xB1D) f(mhpmcounter30  , 0xB1E) f(mhpmcounter31  , 0xB1F)
 
+#define CSRS_M_HPMCOUNTERH(f) \
+  f(mhpmcounter3h   , 0xB83) \
+  f(mhpmcounter4h   , 0xB84) f(mhpmcounter5h   , 0xB85) f(mhpmcounter6h   , 0xB86) f(mhpmcounter7h   , 0xB87) \
+  f(mhpmcounter8h   , 0xB88) f(mhpmcounter9h   , 0xB89) f(mhpmcounter10h  , 0xB8A) f(mhpmcounter11h  , 0xB8B) \
+  f(mhpmcounter12h  , 0xB8C) f(mhpmcounter13h  , 0xB8D) f(mhpmcounter14h  , 0xB8E) f(mhpmcounter15h  , 0xB8F) \
+  f(mhpmcounter16h  , 0xB90) f(mhpmcounter17h  , 0xB91) f(mhpmcounter18h  , 0xB92) f(mhpmcounter19h  , 0xB93) \
+  f(mhpmcounter20h  , 0xB94) f(mhpmcounter21h  , 0xB95) f(mhpmcounter22h  , 0xB96) f(mhpmcounter23h  , 0xB97) \
+  f(mhpmcounter24h  , 0xB98) f(mhpmcounter25h  , 0xB99) f(mhpmcounter26h  , 0xB9A) f(mhpmcounter27h  , 0xB9B) \
+  f(mhpmcounter28h  , 0xB9C) f(mhpmcounter29h  , 0xB9D) f(mhpmcounter30h  , 0xB9E) f(mhpmcounter31h  , 0xB9F)
+
+#ifdef CONFIG_SIM32
+#define CSRS_M_COUNTER_TIMERS(f) \
+  CSRS_M_CNTR(f) \
+  CSRS_M_CNTRH(f) \
+  CSRS_M_HPMCOUNTER(f) \
+  CSRS_M_HPMCOUNTERH(f)
+#else
 #define CSRS_M_COUNTER_TIMERS(f)\
   CSRS_M_CNTR(f) \
   CSRS_M_HPMCOUNTER(f)
-
+#endif
 /** Machine Counter Setup **/
 #define CSRS_M_HPMEVENT(f) \
   f(mhpmevent3     , 0x323) \
@@ -380,6 +421,16 @@
   f(mhpmevent24    , 0x338) f(mhpmevent25    , 0x339) f(mhpmevent26    , 0x33A) f(mhpmevent27    , 0x33B) \
   f(mhpmevent28    , 0x33C) f(mhpmevent29    , 0x33D) f(mhpmevent30    , 0x33E) f(mhpmeven31     , 0x33F)
 
+#define CSRS_M_HPMEVENTH(f) \
+  f(mhpmevent3h     , 0x723) \
+  f(mhpmevent4h     , 0x724) f(mhpmevent5h     , 0x725) f(mhpmevent6h     , 0x726) f(mhpmevent7h     , 0x727) \
+  f(mhpmevent8h     , 0x728) f(mhpmevent9h     , 0x729) f(mhpmevent10h    , 0x72A) f(mhpmevent11h    , 0x72B) \
+  f(mhpmevent12h    , 0x72C) f(mhpmevent13h    , 0x72D) f(mhpmevent14h    , 0x72E) f(mhpmevent15h    , 0x72F) \
+  f(mhpmevent16h    , 0x730) f(mhpmevent17h    , 0x731) f(mhpmevent18h    , 0x732) f(mhpmevent19h    , 0x733) \
+  f(mhpmevent20h    , 0x734) f(mhpmevent21h    , 0x735) f(mhpmevent22h    , 0x736) f(mhpmevent23h    , 0x737) \
+  f(mhpmevent24h    , 0x738) f(mhpmevent25h    , 0x739) f(mhpmevent26h    , 0x73A) f(mhpmevent27h    , 0x73B) \
+  f(mhpmevent28h    , 0x73C) f(mhpmevent29h    , 0x73D) f(mhpmevent30h    , 0x73E) f(mhpmeven31h     , 0x73F)
+
 #ifdef CONFIG_RV_CSR_MCOUNTINHIBIT
   #define CSRS_M_MCOUNTINHIBIT(f) \
   f(mcountinhibit  , 0x320)
@@ -387,9 +438,16 @@
   #define CSRS_M_MCOUNTINHIBIT(f)
 #endif // CONFIG_RV_CSR_MCOUNTINHIBIT
 
+#ifdef CONFIG_SIM32
+#define CSRS_M_COUNTER_SETUP(f) \
+  CSRS_M_MCOUNTINHIBIT(f) \
+  CSRS_M_HPMEVENT(f) \
+  CSRS_M_HPMEVENTH(f)
+#else
 #define CSRS_M_COUNTER_SETUP(f) \
   CSRS_M_MCOUNTINHIBIT(f) \
   CSRS_M_HPMEVENT(f)
+#endif
   
 /** Debug/Trace Registers (Trigger Module Registers) **/
 #ifdef CONFIG_RV_SDTRIG
@@ -524,6 +582,25 @@ CSR_STRUCT_START(mstatus)
   uint64_t sd  : 1; // [63]
 CSR_STRUCT_END(mstatus)
 
+#ifdef CONFIG_SIM32
+CSR_STRUCT_START(mstatush)
+  uint64_t uxl : 2; // [33:32]
+  uint64_t sxl : 2; // [35:34]
+  uint64_t sbe : 1; // [36]
+  uint64_t mbe : 1; // [37]
+#ifdef CONFIG_RVH
+  uint64_t gva : 1; // [38]
+  uint64_t mpv : 1; // [39]
+  uint64_t pad4:23; // [62:40]
+#else
+  uint64_t pad4:25; // [62:38]
+#endif
+  uint64_t pad5: 33;
+CSR_STRUCT_END(mstatush)
+
+CSR_STRUCT_START(medelegh)
+CSR_STRUCT_END(medelegh)
+#endif
 typedef enum ExtContextStatus {
   EXT_CONTEXT_DISABLED = 0,
   EXT_CONTEXT_INITIAL,
@@ -603,6 +680,16 @@ CSR_STRUCT_END(minstret)
 
 CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMCOUNTER)
 CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMEVENT)
+#ifdef CONFIG_SIM32
+CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMCOUNTERH)
+CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMEVENTH)
+CSR_STRUCT_START(mcycleh)
+CSR_STRUCT_END(mcycleh)
+
+CSR_STRUCT_START(minstreth)
+CSR_STRUCT_END(minstreth)
+
+#endif
 
 CSR_STRUCT_START(mcounteren)
 CSR_STRUCT_END(mcounteren)
@@ -644,6 +731,17 @@ CSR_STRUCT_START(menvcfg)
   uint64_t stce   : 1; // [63]
 CSR_STRUCT_END(menvcfg)
 
+#ifdef CONFIG_SIM32
+CSR_STRUCT_START(menvcfgh)
+  uint64_t pmm    : 2; // [33:32]
+  uint64_t pad3   : 26;// [59:34]
+  uint64_t cde    : 1; // [60]
+  uint64_t adue   : 1; // [61]
+  uint64_t pbmte  : 1; // [62]
+  uint64_t stce   : 1; // [63]
+  uint64_t pad4   : 32;
+CSR_STRUCT_END(menvcfgh)
+#endif
 
 #ifdef CONFIG_RV_SMSTATEEN
   CSR_STRUCT_START(mstateen0)
@@ -1276,6 +1374,8 @@ MAP(CSRS, CSRS_DECL)
 #define CSR_MHPMCOUNTER_NUM     29
 #define CSR_MHPMEVENT_BASE      0x323
 #define CSR_MHPMEVENT_NUM       29
+#define CSR_MHPMCOUNTERH_BASE   0xB83
+#define CSR_MHPMEVENTH_BASE     0x723
 
 /** Machine Memory Protection (PMP) **/
 #define PMP_R     0x01

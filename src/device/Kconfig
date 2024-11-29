@@ -73,7 +73,6 @@ config UAR_SNPS_INPUT_FIFO
 endif # HAS_UART_SNPS
 
 menuconfig HAS_PLIC
-  depends on !SHARE
   bool "Enable PLIC"
   default n
 

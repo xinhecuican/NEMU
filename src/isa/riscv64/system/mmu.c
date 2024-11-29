@@ -375,9 +375,6 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
     vaddr39 >>= (64 - 39);
     if ((uint64_t)vaddr39 != vaddr) goto bad;
   } else if (max_level == 2) {
-    int64_t vaddr32 = vaddr << (64 - 32);
-    vaddr32 >>= (64 - 32);
-    if((uint64_t)vaddr32 != vaddr) goto bad;
   }
   for (level = max_level - 1; level >= 0;) {
     p_pte = pg_base + VPNi(vaddr, level) * PTE_SIZE;

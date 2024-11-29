@@ -279,12 +279,23 @@ static inline word_t* csr_decode(uint32_t addr) {
 #define is_pmpcfg(p) (p >= &(csr_array[CSR_PMPCFG_BASE]) && p < &(csr_array[CSR_PMPCFG_BASE + CSR_PMPCFG_MAX_NUM]))
 #define is_pmpaddr(p) (p >= &(csr_array[CSR_PMPADDR_BASE]) && p < &(csr_array[CSR_PMPADDR_BASE + CSR_PMPADDR_MAX_NUM]))
 #define is_hpmcounter(p) (p >= &(csr_array[CSR_HPMCOUNTER_BASE]) && p < &(csr_array[CSR_HPMCOUNTER_BASE + CSR_HPMCOUNTER_NUM]))
+#ifdef CONFIG_SIM32
+#define is_mhpmcounter(p) ((p >= &(csr_array[CSR_MHPMCOUNTER_BASE]) && p < &(csr_array[CSR_MHPMCOUNTER_BASE + CSR_MHPMCOUNTER_NUM])) || (p >= &(csr_array[CSR_MHPMCOUNTERH_BASE]) && p < &(csr_array[CSR_MHPMCOUNTERH_BASE + CSR_MHPMCOUNTER_NUM])))
+#define is_mhpmevent(p) ((p >= &(csr_array[CSR_MHPMEVENT_BASE]) && p < &(csr_array[CSR_MHPMEVENT_BASE + CSR_MHPMEVENT_NUM])) || (p >= &(csr_array[CSR_MHPMEVENTH_BASE]) && p < &(csr_array[CSR_MHPMEVENTH_BASE + CSR_MHPMEVENT_NUM])))
+#else
 #define is_mhpmcounter(p) (p >= &(csr_array[CSR_MHPMCOUNTER_BASE]) && p < &(csr_array[CSR_MHPMCOUNTER_BASE + CSR_MHPMCOUNTER_NUM]))
 #define is_mhpmevent(p) (p >= &(csr_array[CSR_MHPMEVENT_BASE]) && p < &(csr_array[CSR_MHPMEVENT_BASE + CSR_MHPMEVENT_NUM]))
+#endif
 
 #ifdef CONFIG_RV_PMP_CSR
 // get 8-bit config of one PMP entries by index.
 uint8_t pmpcfg_from_index(int idx) {
+#ifdef CONFIG_SIM32
+  int xlen = 32;
+  int bits_per_cfg = 8;
+  int cfgs_per_csr = xlen / bits_per_cfg;
+  int pmpcfg_csr_addr = CSR_PMPCFG_BASE + idx / cfgs_per_csr;
+#else
   // Nemu support up to 64 pmp entries in a XLEN=64 machine.
   int xlen = 64;
   // Configuration register of one entry is 8-bit.
@@ -293,6 +304,8 @@ uint8_t pmpcfg_from_index(int idx) {
   int cfgs_per_csr = xlen / bits_per_cfg;
   // For RV64, only 8 even-numbered pmpcfg CSRs hold the configuration.
   int pmpcfg_csr_addr = CSR_PMPCFG_BASE + idx / cfgs_per_csr * 2;
+#endif
+
 
   uint8_t *cfg_reg = (uint8_t *)&csr_array[pmpcfg_csr_addr];
   return *(cfg_reg + (idx % cfgs_per_csr));
@@ -700,8 +713,8 @@ if (is_read(vsie))           { return get_vsie(); }
   }
   #ifdef CONFIG_RV_CSR_TIME
     else if (is_read(csr_time)) {
-      difftest_skip_ref();
-      return clint_uptime();
+      // difftest_skip_ref();
+      return dut_cpu.gpr[rd]._64;
     }
   #endif // CONFIG_RV_CSR_TIME
   else if (is_read(instret)) {

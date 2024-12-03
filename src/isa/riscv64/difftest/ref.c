@@ -224,7 +224,8 @@ void isa_difftest_csrcpy(void *dut, bool direction) {
 
 void isa_difftest_mpfcpy(void *dut, bool direction) {
   if (direction == DIFFTEST_TO_REF) {
-    memcpy(&dut_cpu, dut, 32 * sizeof(uint64_t));
+    memcpy(&dut_cpu, dut, DIFFTEST_REG_SIZE);
+    mip->val = dut_cpu.mip;
   } else {
     uint64_t* data = (uint64_t*)dut;
     data[0] = mcycle->val;

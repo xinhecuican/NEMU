@@ -52,8 +52,9 @@ void update_clint() {
   uint64_t uptime = get_time();
   clint_base[CLINT_MTIME] = uptime / US_PERCYCLE;
 #endif
-  mip->mtip = (clint_base[CLINT_MTIME] >= clint_base[CLINT_MTIMECMP]);
-  mip->msip = clint_base[0];
+  // disable for difftest
+  // mip->mtip = (clint_base[CLINT_MTIME] >= clint_base[CLINT_MTIMECMP]);
+  // mip->msip = clint_base[0];
 }
 
 uint64_t clint_uptime() {

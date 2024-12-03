@@ -354,7 +354,11 @@ inline word_t gen_status_sd(word_t status) {
   mstatus_t xstatus = (mstatus_t)status;
   bool fs_dirty = xstatus.fs == EXT_CONTEXT_DIRTY;
   bool vs_dirty = xstatus.vs == EXT_CONTEXT_DIRTY;
+#ifdef CONFIG_SIM32
+  return ((word_t)(fs_dirty || vs_dirty)) << 31;
+#else
   return ((word_t)(fs_dirty || vs_dirty)) << 63;
+#endif
 }
 
 static inline word_t get_mcycle() {
@@ -666,7 +670,9 @@ if (is_read(vsie))           { return get_vsie(); }
 #endif
 
   if (is_read(mstatus))     { return gen_status_sd(mstatus->val) | mstatus->val; }
-  if (is_read(sstatus))     { return gen_status_sd(mstatus->val) | (mstatus->val & SSTATUS_RMASK); }
+  else if (is_read(sstatus))     { return gen_status_sd(mstatus->val) | (mstatus->val & SSTATUS_RMASK); }
+  else if (is_read(mcause))      { return (mcause->intr << 31) | (mcause->code & 0xffffffff);}
+  else if (is_read(scause))      { return (scause->intr << 31) | (scause->code & 0xffffffff);}
   else if (is_read(sie))    { return get_sie(); }
   else if (is_read(mtvec))  { return mtvec->val; }
   else if (is_read(stvec))  { return stvec->val; }
@@ -705,17 +711,38 @@ if (is_read(vsie))           { return get_vsie(); }
     // difftest_skip_ref();
     return dut_cpu.gpr[rd]._64;
   }
+#ifdef CONFIG_SIM32
+  else if (is_read(mcycleh)) {
+    return dut_cpu.gpr[rd]._64;
+  }
+  else if (is_read(minstreth)) {
+    return dut_cpu.gpr[rd]._64;
+  }
+#endif
 #ifdef CONFIG_RV_ZICNTR
   else if (is_read(cycle)) {
     // NEMU emulates a hart with CPI = 1.
     // difftest_skip_ref();
     return dut_cpu.gpr[rd]._64;
   }
+  #ifdef CONFIG_SIM32
+  else if (is_read(cycleh)) {
+    return dut_cpu.gpr[rd]._64;
+  }
+  else if (is_read(instreth)) {
+    return dut_cpu.gpr[rd]._64;
+  }
+  #endif
   #ifdef CONFIG_RV_CSR_TIME
     else if (is_read(csr_time)) {
       // difftest_skip_ref();
       return dut_cpu.gpr[rd]._64;
     }
+  #ifdef CONFIG_SIM32
+    else if (is_read(csr_timeh)) {
+      return dut_cpu.gpr[rd]._64;
+    }
+  #endif
   #endif // CONFIG_RV_CSR_TIME
   else if (is_read(instret)) {
     // The number of retired instruction should be the same between dut and ref.
@@ -1035,11 +1062,14 @@ static inline void csr_write(word_t *dest, word_t src) {
       longjmp_exception(EX_II);
     }
     // Only support Sv39 && Sv48(can configure), ignore write that sets other mode
+#ifdef CONFIG_SIM32
+#else
 #ifdef CONFIG_RV_SV48
     if ((src & SATP_SV39_MASK) >> 60 == 9 || (src & SATP_SV39_MASK) >> 60 == 8 || (src & SATP_SV39_MASK) >> 60 == 0)
 #else
     if ((src & SATP_SV39_MASK) >> 60 == 8 || (src & SATP_SV39_MASK) >> 60 == 0)
 #endif // CONFIG_RV_SV48
+#endif
       *dest = MASKED_SATP(src);
   }
 #ifdef CONFIG_RV_SDTRIG

@@ -44,17 +44,29 @@
 
 /** Unprivileged Counter/Timers **/
 #ifdef CONFIG_RV_CSR_TIME
+#ifdef CONFIG_SIM32
+  #define CSRS_UNPRIV_TIME(f) \
+    f(csr_time   , 0xC01) f(csr_timeh, 0xC81)
+#else
   #define CSRS_UNPRIV_TIME(f) \
     f(csr_time   , 0xC01)
+#endif
 #else // CONFIG_RV_CSR_TIME
   #define CSRS_UNPRIV_TIME(f)
 #endif // CONFIG_RV_CSR_TIME
 
 #ifdef CONFIG_RV_ZICNTR
+  #ifdef CONFIG_SIM32
+  #define CSRS_UNPRIV_CNTR(f) \
+    f(cycle      , 0xC00) f(cycleh, 0xC80) \
+    CSRS_UNPRIV_TIME(f) \
+    f(instret    , 0xC02) f(instreth, 0xC81)
+  #else
   #define CSRS_UNPRIV_CNTR(f) \
     f(cycle      , 0xC00) \
     CSRS_UNPRIV_TIME(f) \
     f(instret    , 0xC02)
+  #endif
     // There is `time_t` type in the C programming language.
     // So We have to use another name for CSR time.
 #else // CONFIG_RV_ZICNTR
@@ -685,6 +697,10 @@ CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMCOUNTERH)
 CSR_STRUCT_DUMMY_LIST(CSRS_M_HPMEVENTH)
 CSR_STRUCT_START(mcycleh)
 CSR_STRUCT_END(mcycleh)
+CSR_STRUCT_START(cycleh)
+CSR_STRUCT_END(cycleh)
+CSR_STRUCT_START(instreth)
+CSR_STRUCT_END(instreth)
 
 CSR_STRUCT_START(minstreth)
 CSR_STRUCT_END(minstreth)
@@ -1344,6 +1360,10 @@ CSR_STRUCT_END(cycle)
 #ifdef CONFIG_RV_CSR_TIME
 CSR_STRUCT_START(csr_time)
 CSR_STRUCT_END(csr_time)
+#ifdef CONFIG_SIM32
+CSR_STRUCT_START(csr_timeh)
+CSR_STRUCT_END(csr_timeh)
+#endif
 #endif // CONFIG_RV_CSR_TIME
 
 CSR_STRUCT_START(instret)
@@ -1411,14 +1431,17 @@ MAP(CSRS, CSRS_DECL)
 #define SATP_MODE_BARE 0
 #define SATP_MODE_Sv39 8
 #define SATP_MODE_Sv48 9
-#define SATP_ASID_LEN 16 // max is 16
-#define SATP_PADDR_LEN (CONFIG_PADDRBITS-12) // max is 44
 #ifdef CONFIG_SIM32
+#define SATP_ASID_LEN 9 // currently asid field not use
 #define SATP_ASID_MAX_LEN 9
+#define SATP_PADDR_MAX_LEN 22
 #else
+#define SATP_ASID_LEN 16 // max is 16
 #define SATP_ASID_MAX_LEN 16
-#endif
 #define SATP_PADDR_MAX_LEN 44
+#endif
+#define SATP_PADDR_LEN (CONFIG_PADDRBITS-12) // max is 44
+
 
 #define SATP_MODE32_MASK (1UL << 31)
 #define SATP_MODE39_MASK (8UL << (SATP_ASID_MAX_LEN + SATP_PADDR_MAX_LEN))
@@ -1428,11 +1451,13 @@ MAP(CSRS, CSRS_DECL)
 
 #ifdef CONFIG_SIM32
 #define SATP_MASK (SATP_MODE32_MASK | SATP_ASID_MASK | SATP_PADDR_MASK)
-#elif CONFIG_RV_SV48
+#else
+#if CONFIG_RV_SV48
 #define SATP_MASK (SATP_MODE39_MASK | SATP_MODE48_MASK | SATP_ASID_MASK | SATP_PADDR_MASK)
 #else
 #define SATP_MASK (SATP_MODE39_MASK | SATP_ASID_MASK | SATP_PADDR_MASK)
 #endif // CONFIG_RV_SV48
+#endif
 #define MASKED_SATP(x) (SATP_MASK & x)
 
 /** CSR hgatp **/

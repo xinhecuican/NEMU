@@ -703,44 +703,44 @@ if (is_read(vsie))           { return get_vsie(); }
   else if (is_read(mcycle)) {
     // NEMU emulates a hart with CPI = 1.
     // difftest_skip_ref();
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
   else if (is_read(minstret)) {
     // The number of retired instruction should be the same between dut and ref.
     // But instruction counter of NEMU is not accurate when enabling Performance optimization.
     // difftest_skip_ref();
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
 #ifdef CONFIG_SIM32
   else if (is_read(mcycleh)) {
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
   else if (is_read(minstreth)) {
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
 #endif
 #ifdef CONFIG_RV_ZICNTR
   else if (is_read(cycle)) {
     // NEMU emulates a hart with CPI = 1.
     // difftest_skip_ref();
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
   #ifdef CONFIG_SIM32
   else if (is_read(cycleh)) {
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
   else if (is_read(instreth)) {
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
   #endif
   #ifdef CONFIG_RV_CSR_TIME
     else if (is_read(csr_time)) {
       // difftest_skip_ref();
-      return dut_cpu.gpr[rd]._64;
+      return dut_cpu.gpr[0]._64;
     }
   #ifdef CONFIG_SIM32
     else if (is_read(csr_timeh)) {
-      return dut_cpu.gpr[rd]._64;
+      return dut_cpu.gpr[0]._64;
     }
   #endif
   #endif // CONFIG_RV_CSR_TIME
@@ -748,7 +748,7 @@ if (is_read(vsie))           { return get_vsie(); }
     // The number of retired instruction should be the same between dut and ref.
     // But instruction counter of NEMU is not accurate when enabling Performance optimization.
     // difftest_skip_ref();
-    return dut_cpu.gpr[rd]._64;
+    return dut_cpu.gpr[0]._64;
   }
 #endif // CONFIG_RV_ZICNTR
 #ifndef CONFIG_RVH

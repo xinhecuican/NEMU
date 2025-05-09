@@ -34,6 +34,7 @@ void init_isa();
 extern CPU_state cpu;
 extern CPU_state dut_cpu;
 extern rtlreg_t csr_array[4096];
+extern uint64_t guide_cycle;
 void isa_reg_display();
 word_t isa_reg_str2val(const char *name, bool *success);
 

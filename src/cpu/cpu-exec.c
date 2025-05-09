@@ -41,6 +41,7 @@
 
 CPU_state cpu = {};
 CPU_state dut_cpu = {};
+uint64_t guide_cycle = 0;
 uint64_t g_nr_guest_instr = 0;
 uint64_t g_nr_vst = 0, g_nr_vst_unit = 0, g_nr_vst_unit_optimized = 0;
 static uint64_t g_timer = 0; // unit: us

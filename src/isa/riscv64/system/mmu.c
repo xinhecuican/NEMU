@@ -849,7 +849,7 @@ int force_raise_pf(vaddr_t vaddr, int type){
           );
         }
       }
-      printf("force raise IPF\n");
+      printf("force raise IPF %lx\n", guide_cycle);
       longjmp_exception(EX_IPF);
       return MEM_RET_FAIL;
     } else if(!ifetch && type == MEM_TYPE_READ && cpu.execution_guide.exception_num == EX_LPF){
@@ -858,7 +858,7 @@ int force_raise_pf(vaddr_t vaddr, int type){
       }
       IFDEF(CONFIG_USE_XS_ARCH_CSRS, vaddr = INTR_TVAL_SV48_SEXT(vaddr));
       INTR_TVAL_REG(EX_LPF) = vaddr;
-      printf("force raise LPF\n");
+      printf("force raise LPF %lx\n", guide_cycle);
       longjmp_exception(EX_LPF);
       return MEM_RET_FAIL;
     } else if(type == MEM_TYPE_WRITE && cpu.execution_guide.exception_num == EX_SPF){
@@ -867,7 +867,7 @@ int force_raise_pf(vaddr_t vaddr, int type){
       }
       IFDEF(CONFIG_USE_XS_ARCH_CSRS, vaddr = INTR_TVAL_SV48_SEXT(vaddr));
       INTR_TVAL_REG(EX_SPF) = vaddr;
-      printf("force raise SPF\n");
+      printf("force raise SPF %lx\n", guide_cycle);
       longjmp_exception(EX_SPF);
       return MEM_RET_FAIL;
     }

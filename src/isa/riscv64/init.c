@@ -124,7 +124,7 @@ void init_isa() {
 #endif
 
 #ifdef CONFIG_SIM32
-  misa->val = 0x40141101;
+  misa->val = 0x40141125;
 #endif
 
 #ifdef CONFIG_RVV

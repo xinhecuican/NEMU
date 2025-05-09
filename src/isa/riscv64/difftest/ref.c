@@ -227,6 +227,7 @@ void isa_difftest_mpfcpy(void *dut, bool direction) {
     uint64_t* dut_ptr = (uint64_t*)dut;
     dut_cpu.gpr[0]._64 = dut_ptr[0];
     mip->val = dut_ptr[1];
+    guide_cycle = dut_ptr[2];
   } else {
     uint64_t* data = (uint64_t*)dut;
     data[0] = mcycle->val;

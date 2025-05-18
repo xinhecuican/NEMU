@@ -671,8 +671,13 @@ if (is_read(vsie))           { return get_vsie(); }
 
   if (is_read(mstatus))     { return gen_status_sd(mstatus->val) | mstatus->val; }
   else if (is_read(sstatus))     { return gen_status_sd(mstatus->val) | (mstatus->val & SSTATUS_RMASK); }
+#ifdef CONFIG_SIM32
   else if (is_read(mcause))      { return (mcause->intr << 31) | (mcause->code & 0xffffffff);}
   else if (is_read(scause))      { return (scause->intr << 31) | (scause->code & 0xffffffff);}
+#else
+  else if (is_read(mcause))      { return mcause->val;}
+  else if (is_read(scause))      { return scause->val;}
+#endif
   else if (is_read(sie))    { return get_sie(); }
   else if (is_read(mtvec))  { return mtvec->val; }
   else if (is_read(stvec))  { return stvec->val; }

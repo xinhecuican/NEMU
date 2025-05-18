@@ -176,12 +176,13 @@ static inline def_rtl(div64s_r, rtlreg_t* dest,
 
 static inline def_rtl(lm, rtlreg_t *dest, const rtlreg_t* addr,
     word_t offset, int len, int mmu_mode) {
-  *dest = vaddr_read(s, *addr + offset, len, mmu_mode);
+  vaddr_t raddr = *addr + offset;
+  *dest = vaddr_read(s, raddr, len, mmu_mode);
 #ifdef CONFIG_QUERY_REF
   cpu.query_mem_event.pc = cpu.debug.current_pc;
   cpu.query_mem_event.mem_access = true;
   cpu.query_mem_event.mem_access_is_load = true;
-  cpu.query_mem_event.mem_access_vaddr = *addr + offset;
+  cpu.query_mem_event.mem_access_vaddr = raddr;
 #endif
 }
 

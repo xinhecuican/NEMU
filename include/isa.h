@@ -54,6 +54,7 @@ int isa_mmu_state();
 #ifndef isa_mmu_check
 int isa_mmu_check(vaddr_t vaddr, int len, int type);
 #endif
+void isa_mmu_flush(vaddr_t vaddr);
 paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type);
 bool isa_pmp_check_permission(paddr_t addr, int len, int type, int mode);
 

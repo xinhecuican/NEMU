@@ -1436,7 +1436,7 @@ MAP(CSRS, CSRS_DECL)
 #define SATP_ASID_MAX_LEN 9
 #define SATP_PADDR_MAX_LEN 22
 #else
-#define SATP_ASID_LEN 16 // max is 16
+#define SATP_ASID_LEN 8 // max is 16
 #define SATP_ASID_MAX_LEN 16
 #define SATP_PADDR_MAX_LEN 44
 #endif

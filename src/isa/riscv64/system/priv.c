@@ -1448,6 +1448,7 @@ static word_t priv_instr(uint32_t op, const rtlreg_t *src) {
             longjmp_exception(EX_II);
 #endif // CONFIG_RVH
           mmu_tlb_flush(*src);
+          isa_mmu_flush(*src);
           break;
 #ifdef CONFIG_RV_SVINVAL
         case 0x0b: // sinval.vma

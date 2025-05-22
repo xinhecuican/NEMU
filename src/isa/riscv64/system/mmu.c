@@ -21,6 +21,7 @@
 #include <cpu/cpu.h>
 #include "../local-include/csr.h"
 #include "../local-include/intr.h"
+#include <stdlib.h>
 #ifdef CONFIG_SIM32
 typedef union PageTableEntry {
   struct {
@@ -58,6 +59,16 @@ typedef union PageTableEntry {
 } PTE;
 #endif
 
+#define TLB_NUM 32
+typedef struct TLBEntry{
+  bool en;
+  vaddr_t vaddr;
+  uint8_t pn;
+  PTE pte;
+} TLBEntry;
+TLBEntry itlb[TLB_NUM];
+TLBEntry dtlb[TLB_NUM];
+
 #define PGSHFT 12
 #define PGMASK ((1ull << PGSHFT) - 1)
 #define PGBASE(pn) (pn << PGSHFT)
@@ -90,6 +101,26 @@ static inline uintptr_t GVPNi(vaddr_t va, int i) {
   bool hlvx = 0;
   bool hld_st = 0;
 #endif
+
+bool tlbLookup(TLBEntry *tlb, vaddr_t vaddr, PTE* pte, int* level, word_t* pg_base) {
+  for (int i = 0; i < TLB_NUM; i++) {
+    if (tlb[i].en) {
+      bool success = true;
+      word_t pg_mask = ((1ull << VPNiSHFT(tlb[i].pn)) - 1);
+      if ((vaddr & ~pg_mask) != (tlb[i].vaddr & ~pg_mask)) {
+        success = false;
+      }
+      if (success) {
+        *pte = tlb[i].pte;
+        *level = tlb[i].pn;
+        *pg_base = PGBASE((uint64_t)pte->ppn);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 #ifdef CONFIG_RVH
 static inline bool check_permission(PTE *pte, bool ok, vaddr_t vaddr, int type, int virt, int mode) {
 bool ifetch = (type == MEM_TYPE_IFETCH);
@@ -365,7 +396,7 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
 #endif
   word_t p_pte; // pte pointer
   PTE pte;
-  int level;
+  int level = 0;
   if (max_level == 4) {
     int64_t vaddr48 = vaddr << (64 - 48);
     vaddr48 >>= (64 - 48);
@@ -376,6 +407,20 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
     if ((uint64_t)vaddr39 != vaddr) goto bad;
   } else if (max_level == 2) {
   }
+
+  bool from_tlb = false;
+  bool ifetch = (type == MEM_TYPE_IFETCH);
+  bool success = false;
+  if (ifetch) {
+    success = tlbLookup(itlb, vaddr, &pte, &level, &pg_base);
+  } else {
+    success = tlbLookup(dtlb, vaddr, &pte, &level, &pg_base);
+  }
+  if (success) {
+    from_tlb = true;
+    goto pte_end;
+  }
+
   for (level = max_level - 1; level >= 0;) {
     p_pte = pg_base + VPNi(vaddr, level) * PTE_SIZE;
 #ifdef CONFIG_MULTICORE_DIFF
@@ -429,6 +474,7 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
       if (level < 0) { goto bad; }
     }
   }
+pte_end:
 #ifdef CONFIG_RVH
   if (!check_permission(&pte, true, vaddr, type, virt, mode)) return MEM_RET_FAIL;
 #else
@@ -442,6 +488,20 @@ static paddr_t ptw(vaddr_t vaddr, int type) {
       goto bad;
     }
     pg_base = (pg_base & ~pg_mask) | (vaddr & pg_mask & ~PGMASK);
+  }
+  if (!from_tlb) {
+    uint16_t idx = rand() % TLB_NUM;
+    if (ifetch) {
+      itlb[idx].en = true;
+      itlb[idx].vaddr = vaddr;
+      itlb[idx].pn = level;
+      itlb[idx].pte = pte;
+    } else {
+      dtlb[idx].en = true;
+      dtlb[idx].vaddr = vaddr;
+      dtlb[idx].pn = level;
+      dtlb[idx].pte = pte;
+    }
   }
   #ifdef CONFIG_RVH
   if(virt){
@@ -757,6 +817,26 @@ void isa_misalign_data_addr_check(vaddr_t vaddr, int len, int type) {
       IFDEF(CONFIG_USE_XS_ARCH_CSRS, vaddr = INTR_TVAL_SV48_SEXT(vaddr));
       INTR_TVAL_REG(ex) = vaddr;
       longjmp_exception(ex);
+    }
+  }
+}
+
+void isa_mmu_flush(vaddr_t vaddr) {
+  if (vaddr != 0) {
+    for (int i = 0; i < TLB_NUM; i++) {
+      word_t pg_mask = ((1ull << VPNiSHFT(itlb[i].pn)) - 1);
+      if ((vaddr & ~pg_mask) == (itlb[i].vaddr & ~pg_mask)) {
+        itlb[i].en = false;
+      }
+      pg_mask = ((1ull << VPNiSHFT(dtlb[i].pn)) - 1);
+      if ((vaddr & ~pg_mask) == (dtlb[i].vaddr & ~pg_mask)) {
+        dtlb[i].en = false;
+      }
+    }
+  } else {
+    for (int i = 0; i < TLB_NUM; i++) {
+      itlb[i].en = false;
+      dtlb[i].en = false;
     }
   }
 }

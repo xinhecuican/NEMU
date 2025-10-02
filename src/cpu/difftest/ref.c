@@ -19,6 +19,7 @@
 #include <memory/sparseram.h>
 #include <cpu/cpu.h>
 #include <difftest.h>
+#include <device/mmio.h>
 
 extern void init_flash();
 extern void load_flash_contents(const char *flash_img);
@@ -76,7 +77,11 @@ void difftest_memcpy(paddr_t nemu_addr, void *dut_buf, size_t n, bool direction)
 #else
 #ifdef CONFIG_LARGE_COPY
   assert(guest_to_host(nemu_addr) != NULL);
-  if (direction == DIFFTEST_TO_REF) nemu_large_memcpy(guest_to_host(nemu_addr), dut_buf, n);
+  if (direction == DIFFTEST_TO_REF) {
+      extern bool is_in_mmio(paddr_t addr);
+    if(is_in_mmio(nemu_addr)) mmio_write(nemu_addr, n, (*((char*)dut_buf)));
+    else nemu_large_memcpy(guest_to_host(nemu_addr), dut_buf, n);
+  }
   else nemu_large_memcpy(dut_buf, guest_to_host(nemu_addr), n);
 #else
   assert(guest_to_host(nemu_addr) != NULL);

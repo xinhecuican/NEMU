@@ -118,21 +118,21 @@ static void init_fifo() {
 #endif
 
 static void serial_io_handler(uint32_t offset, int len, bool is_write) {
-  assert(len == 1);
-  switch (offset) {
-    /* We bind the serial port with the host stderr in NEMU. */
-    case CH_OFFSET:
-      if (is_write) {
-	  #ifndef CONFIG_SHARE
-          putc(serial_base[UARTLITE_TX_FIFO], stderr);
-          #endif // CONFIG_SHARE
-      } else serial_base[0] = MUXDEF(CONFIG_SERIAL_INPUT_FIFO, serial_dequeue(), 0xff);
-      break;
-    case LSR_OFFSET:
-      if (!is_write)
-        serial_base[5] = LSR_TX_READY | LSR_FIFO_EMPTY | MUXDEF(CONFIG_SERIAL_INPUT_FIFO, serial_rx_ready_flag(), 0);
-      break;
-  }
+  // assert(len == 1);
+  // switch (offset) {
+  //   /* We bind the serial port with the host stderr in NEMU. */
+  //   case CH_OFFSET:
+  //     if (is_write) {
+	//   #ifndef CONFIG_SHARE
+  //         putc(serial_base[UARTLITE_TX_FIFO], stderr);
+  //         #endif // CONFIG_SHARE
+  //     } else serial_base[0] = MUXDEF(CONFIG_SERIAL_INPUT_FIFO, serial_dequeue(), 0xff);
+  //     break;
+  //   case LSR_OFFSET:
+  //     if (!is_write)
+  //       serial_base[5] = LSR_TX_READY | LSR_FIFO_EMPTY | MUXDEF(CONFIG_SERIAL_INPUT_FIFO, serial_rx_ready_flag(), 0);
+  //     break;
+  // }
 }
 
 void init_serial() {
